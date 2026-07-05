@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent
 PYTHON = ROOT / ".venv" / "bin" / "python"
 DAEMON = ROOT / "daemon.py"
 BASE_URL = "http://127.0.0.1:7333"
+DISABLED = ROOT / ".voice-disabled"
 
 
 def request(path: str, payload: dict | None = None, timeout: float = 0.08) -> bool:
@@ -65,6 +66,9 @@ def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
     except Exception:
+        return 0
+
+    if DISABLED.exists():
         return 0
 
     event = payload.get("hook_event_name") or payload.get("event") or ""
