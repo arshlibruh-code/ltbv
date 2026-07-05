@@ -3,7 +3,6 @@ import json
 import subprocess
 import sys
 import time
-import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -31,6 +30,14 @@ def request(path: str, payload: dict | None = None, timeout: float = 0.08) -> bo
         return True
     except Exception:
         return False
+
+
+def speak(payload: dict, retry: bool = True) -> None:
+    if request("/speak", payload, 0.08):
+        return
+    if retry:
+        time.sleep(0.3)
+        request("/speak", payload, 0.08)
 
 
 def daemon_up() -> bool:
@@ -78,6 +85,21 @@ def main() -> int:
         request("/stop", {"cwd": payload.get("cwd")}, 0.08)
         return 0
 
+    if event == "Notification":
+        cwd = payload.get("cwd")
+        project = Path(cwd).name if cwd else "This project"
+        speak(
+            {
+                "event": event,
+                "text": f"{project} needs your input",
+                "ts": time.time(),
+                "cwd": cwd,
+                "session_id": payload.get("session_id"),
+                "turn_id": payload.get("turn_id") or payload.get("prompt_id"),
+            }
+        )
+        return 0
+
     if event != "Stop":
         return 0
 
@@ -85,8 +107,7 @@ def main() -> int:
     if not text.strip():
         return 0
 
-    request(
-        "/speak",
+    speak(
         {
             "event": event,
             "text": text,
@@ -94,8 +115,7 @@ def main() -> int:
             "cwd": payload.get("cwd"),
             "session_id": payload.get("session_id"),
             "turn_id": payload.get("turn_id") or payload.get("prompt_id"),
-        },
-        0.08,
+        }
     )
     return 0
 

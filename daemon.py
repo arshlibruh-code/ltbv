@@ -7,7 +7,6 @@ import subprocess
 import tempfile
 import threading
 import time
-import urllib.error
 import urllib.request
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -17,10 +16,9 @@ ROOT = Path(__file__).resolve().parent
 HOST = "127.0.0.1"
 PORT = 7333
 IDLE_EXIT_S = 600
-MAX_DIRECT_CHARS = 1000
+MAX_DIRECT_CHARS = 400
 ENGINE = "pocket"
 DEEPSEEK_SETTINGS = Path.home() / ".claude" / "settings.deepseek.json"
-DEEPSEEK_FAILED_TEXT = "DeepSeek failed. I could not condense this long reply."
 DEEPSEEK_TIMEOUT_S = 12
 TABLE_FALLBACK_TEXT = (
     "I made a table for this, but I won't read the whole thing out loud. "
@@ -32,13 +30,16 @@ LOG_PATH = ROOT / ".voice.log"
 
 
 state_lock = threading.Lock()
-pending = None
+pending = {}
 worker_running = False
 generation = 0
+project_generations = {}
 active_player = None
 active_cwd = None
 working_cwd = None
 last_activity = time.monotonic()
+started_at = time.monotonic()
+last_spoken_ts = None
 recent_projects = {}
 prefix_counter = 0
 
@@ -73,6 +74,10 @@ def read_json(handler: BaseHTTPRequestHandler) -> dict:
 
 def append_log(event: str, **fields) -> None:
     try:
+        if LOG_PATH.exists():
+            lines = LOG_PATH.read_text().splitlines()
+            if len(lines) > 500:
+                LOG_PATH.write_text("\n".join(lines[-250:]) + "\n")
         payload = {"ts": round(time.time(), 3), "event": event, **fields}
         with LOG_PATH.open("a") as handle:
             handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
@@ -118,11 +123,16 @@ def strip_markdown(text: str) -> str:
             continue
         if s.startswith(("+++", "---", "@@", "diff ", "Traceback ", 'File "')):
             continue
-        if re.search(r"(^|/)[\w.-]+/[\w./-]+", s):
-            continue
-        if re.search(r"\bhttps?://\S+", s):
-            continue
-        if re.search(r"\.(py|js|ts|tsx|jsx|json|toml|md|html|css|sh)(:\d+)?\b", s):
+        s = re.sub(r"\bhttps?://\S+", " ", s)
+        s = re.sub(r"(?:~|\.)?/[\w .-]+(?:/[\w .-]+)+(?:[:]\d+)?", " ", s)
+        s = re.sub(r"(?:\./|\../)?[\w.-]+(?:/[\w.-]+)+(?:[:]\d+)?", " ", s)
+        s = re.sub(
+            r"\b[\w.-]+\.(?:py|js|ts|tsx|jsx|json|toml|md|html|css|sh)(?::\d+)?\b",
+            " ",
+            s,
+        )
+        s = re.sub(r"\s+", " ", s).strip()
+        if not s:
             continue
         clean_lines.append(s)
     text = " ".join(clean_lines)
@@ -205,15 +215,11 @@ def prepare_speech(raw: str) -> tuple[str, dict]:
         condensed = condense(text)
         if condensed is None:
             meta["condense"] = "failed"
-            return DEEPSEEK_FAILED_TEXT, meta
+            return f"Summary failed, first line: {first_sentence(text)}", meta
         meta["condense"] = "ok"
         return strip_markdown(condensed), meta
     meta["condense"] = "not_needed"
     return text, meta
-
-
-def prepare_text(raw: str) -> str:
-    return prepare_speech(raw)[0]
 
 
 def project_name(cwd: str | None) -> str | None:
@@ -255,7 +261,15 @@ def load_pocket():
     return tts_model, tts_voice_state
 
 
-def synthesize(text: str, gen: int) -> Path | None:
+def generation_for(cwd: str | None) -> int:
+    return project_generations.get(cwd, 0)
+
+
+def is_stale(cwd: str | None, gen: int) -> bool:
+    return generation_for(cwd) != gen
+
+
+def synthesize(text: str, gen: int, cwd: str | None) -> Path | None:
     if ENGINE != "pocket":
         return None
     model, voice_state = load_pocket()
@@ -264,7 +278,7 @@ def synthesize(text: str, gen: int) -> Path | None:
         model_state=voice_state, text_to_generate=text
     ):
         with state_lock:
-            if gen != generation:
+            if is_stale(cwd, gen):
                 return None
         chunks.append(chunk)
     fd, name = tempfile.mkstemp(prefix="ltbv-", suffix=".wav")
@@ -281,15 +295,6 @@ def synthesize(text: str, gen: int) -> Path | None:
     return path
 
 
-def kill_player() -> None:
-    player = take_active_player()
-    if player and player.poll() is None:
-        try:
-            os.killpg(player.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-
-
 def take_active_player():
     global active_player, active_cwd
     player = active_player
@@ -299,12 +304,17 @@ def take_active_player():
 
 
 def play(path: Path, gen: int, cwd: str | None) -> None:
-    global active_player, active_cwd
+    global active_player, active_cwd, last_spoken_ts
     with state_lock:
-        if gen != generation:
+        if is_stale(cwd, gen):
+            try:
+                path.unlink()
+            except OSError:
+                pass
             return
         active_player = subprocess.Popen(["afplay", str(path)], start_new_session=True)
         active_cwd = cwd
+        last_spoken_ts = time.time()
         player = active_player
     try:
         player.wait()
@@ -323,11 +333,10 @@ def worker() -> None:
     global pending, worker_running, working_cwd
     while True:
         with state_lock:
-            job = pending
-            pending = None
-            if job is None:
+            if not pending:
                 worker_running = False
                 return
+            key, job = pending.popitem()
         gen, raw, cwd = job
         with state_lock:
             working_cwd = cwd
@@ -343,16 +352,17 @@ def worker() -> None:
         if prefixed:
             text = prefix + text
         with state_lock:
-            stale = gen != generation
+            stale = is_stale(cwd, gen)
+            current_generation = generation_for(cwd)
         if stale:
             with state_lock:
                 if working_cwd == cwd:
                     working_cwd = None
             append_log(
-                "speak_stale", cwd=cwd, generation=gen, current_generation=generation
+                "speak_stale", cwd=cwd, generation=gen, current_generation=current_generation
             )
             continue
-        wav_path = synthesize(text, gen)
+        wav_path = synthesize(text, gen, cwd)
         with state_lock:
             if working_cwd == cwd:
                 working_cwd = None
@@ -374,7 +384,8 @@ def enqueue_speak(raw: str, cwd: str | None = None) -> int:
     with state_lock:
         generation += 1
         gen = generation
-        pending = (gen, raw, cwd)
+        project_generations[cwd] = gen
+        pending[cwd] = (gen, raw, cwd)
         if not worker_running:
             worker_running = True
             threading.Thread(target=worker, daemon=True).start()
@@ -384,25 +395,31 @@ def enqueue_speak(raw: str, cwd: str | None = None) -> int:
 def stop_speech(cwd: str | None = None) -> int:
     global generation, pending, working_cwd
     with state_lock:
-        pending_cwd = pending[2] if pending else None
+        pending_cwds = list(pending)
         should_stop = (
-            cwd is None or pending_cwd == cwd or working_cwd == cwd or active_cwd == cwd
+            cwd is None or cwd in pending or working_cwd == cwd or active_cwd == cwd
         )
         if not should_stop:
             append_log(
                 "stop_ignored",
                 cwd=cwd,
                 active_cwd=active_cwd,
-                pending_cwd=pending_cwd,
+                pending_cwds=pending_cwds,
                 working_cwd=working_cwd,
             )
             return generation
         generation += 1
         gen = generation
-        pending = None
+        if cwd is None:
+            pending.clear()
+            for key in list(project_generations):
+                project_generations[key] = gen
+        else:
+            pending.pop(cwd, None)
+            project_generations[cwd] = gen
         if cwd is None or working_cwd == cwd:
             working_cwd = None
-        player = take_active_player()
+        player = take_active_player() if cwd is None or active_cwd == cwd else None
         append_log("stop", cwd=cwd, generation=gen)
     if player and player.poll() is None:
         try:
@@ -429,7 +446,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         bump_activity()
         if self.path == "/health":
-            json_response(self, 200, {"ok": True, "engine": ENGINE})
+            json_response(
+                self,
+                200,
+                {
+                    "ok": True,
+                    "engine": ENGINE,
+                    "model_loaded": tts_model is not None,
+                    "uptime_s": round(now() - started_at, 1),
+                    "last_spoken_ts": last_spoken_ts,
+                },
+            )
         else:
             json_response(self, 404, {"error": "not_found"})
 
