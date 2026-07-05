@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>let-there-be-voice · Controller</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #141414;
+      --panel: #1a1a1a;
+      --panel-2: #1f1f1f;
+      --line: #2b2b2b;
+      --line-soft: #242424;
+      --text: #e8e8e8;
+      --muted: #9a9a9a;
+      --faint: #6a6a6a;
+      --green: #58d68d;
+      --blue: #68a4ff;
+      --yellow: #f2c94c;
+      --red: #ff6b6b;
+      --mono: "Share Tech Mono", ui-monospace, Menlo, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; border-radius: 0 !important; }
+    body {
+      margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+      font-family: var(--sans); font-size: 13px; line-height: 1.4;
+    }
+    code, .num, input, select, textarea, button.mono { font-family: var(--mono); }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 16px 18px 40px; }
+
+    .topbar {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      justify-content: space-between; padding: 10px 12px; margin-bottom: 16px;
+      border: 1px solid var(--line); background: var(--panel);
+    }
+    .topbar h1 { margin: 0; font-size: 14px; }
+    .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px;
+      border: 1px solid var(--line); background: var(--panel-2);
+      color: var(--muted); font-size: 11px; white-space: nowrap;
+    }
+    .dot { width: 6px; height: 6px; background: var(--faint); }
+    .dot.on { background: var(--green); }
+    .btn {
+      padding: 6px 10px; border: 1px solid var(--line); background: var(--panel-2);
+      color: var(--text); cursor: pointer; font-size: 11px; font-family: var(--sans);
+    }
+    .btn:hover { border-color: var(--blue); }
+    .btn.danger { border-color: #4a2325; color: var(--red); }
+    .btn.danger:hover { border-color: var(--red); }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+
+    section { margin-bottom: 18px; border: 1px solid var(--line); background: var(--panel); }
+    section > header {
+      display: flex; align-items: baseline; gap: 10px; padding: 9px 12px;
+      border-bottom: 1px solid var(--line-soft); background: #171717;
+    }
+    section > header h2 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+    section > header span { color: var(--faint); font-size: 11px; }
+    .body { padding: 12px; }
+
+    .histo-wrap { position: relative; }
+    canvas { display: block; width: 100%; height: 150px; cursor: ew-resize; }
+    .readout { margin-top: 6px; display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 11px; }
+    .readout b { color: var(--text); font-family: var(--mono); }
+
+    .knobs { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px 16px; margin-top: 12px; }
+    .knob label { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-bottom: 3px; }
+    .knob label b { color: var(--text); font-family: var(--mono); font-weight: 400; }
+    input[type=range] { width: 100%; accent-color: #68a4ff; background: transparent; }
+    .quiet-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--muted); font-size: 11px; flex-wrap: wrap; }
+    input[type=text], select, textarea {
+      background: #101010; border: 1px solid var(--line); color: var(--text);
+      padding: 5px 7px; font-size: 12px;
+    }
+    input.hhmm { width: 64px; text-align: center; }
+
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .pane { border: 1px solid var(--line-soft); background: #101010; padding: 10px; min-height: 90px; max-height: 260px; overflow: auto; font-size: 12px; color: var(--muted); white-space: pre-wrap; word-break: break-word; }
+    .pane-title { color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+    .cut { background: #33181a; color: #d29a9d; text-decoration: line-through; }
+
+    .lab-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-bottom: 12px; }
+    .assign { border: 1px solid var(--line-soft); background: var(--panel-2); padding: 10px; }
+    .assign b { display: block; font-size: 11px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+    .assign .row { display: flex; gap: 6px; }
+    .assign select { flex: 1; min-width: 0; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 8px;
+      border: 1px solid var(--line); background: var(--panel-2); font-size: 11px; color: var(--muted);
+    }
+    .chip button { padding: 2px 6px; font-size: 10px; }
+    .dropzone {
+      margin-top: 12px; padding: 14px; border: 1px dashed var(--line); color: var(--faint);
+      font-size: 11px; text-align: center;
+    }
+
+    .tiles { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-bottom: 12px; }
+    .tile { border: 1px solid var(--line-soft); background: var(--panel-2); padding: 10px; }
+    .tile b { display: block; font-family: var(--mono); font-size: 18px; margin-bottom: 2px; }
+    .tile span { color: var(--muted); font-size: 11px; }
+    .lanes { display: grid; gap: 6px; }
+    .lane { display: grid; grid-template-columns: 150px 1fr; gap: 8px; align-items: center; }
+    .lane .name { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lane .track { position: relative; height: 18px; background: #101010; border: 1px solid var(--line-soft); }
+    .lane .blip { position: absolute; top: 50%; transform: translate(-50%,-50%); background: var(--blue); }
+    .lane .blip.condensed { background: var(--green); }
+    .lane .blip.table { background: var(--yellow); }
+    .lane .blip.notif { background: var(--red); }
+
+    textarea#prompt { width: 100%; min-height: 110px; resize: vertical; line-height: 1.5; }
+    .row-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+    #recondense-out { margin-top: 8px; }
+    .hint { color: var(--faint); font-size: 11px; }
+    .saved { color: var(--green); font-size: 11px; opacity: 0; transition: opacity 0.2s; }
+    .saved.show { opacity: 1; }
+
+    @media (max-width: 900px) {
+      .knobs, .lab-grid { grid-template-columns: 1fr; }
+      .cols { grid-template-columns: 1fr; }
+      .tiles { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <h1>let-there-be-voice · controller</h1>
+      <div class="pills">
+        <span class="pill"><i class="dot" id="dot"></i> <span id="h-engine">…</span></span>
+        <span class="pill">model <span class="num" id="h-model">…</span></span>
+        <span class="pill">up <span class="num" id="h-uptime">…</span></span>
+        <span class="pill">rev <span class="num" id="h-rev">…</span></span>
+        <span class="pill">spoke <span class="num" id="h-spoke">never</span></span>
+      </div>
+      <button class="btn danger" id="shutup">SHUT UP</button>
+    </div>
+
+    <section>
+      <header><h2>Mixing Desk</h2><span>drag the line on the histogram to set the condense threshold</span></header>
+      <div class="body">
+        <div class="histo-wrap"><canvas id="histo" width="1120" height="150"></canvas></div>
+        <div class="readout">
+          <span>threshold <b id="r-thresh">…</b> chars</span>
+          <span>would have condensed <b id="r-pct">…</b> of recent speaks</span>
+          <span class="saved" id="saved-desk">saved</span>
+        </div>
+        <div class="knobs">
+          <div class="knob"><label>playback rate <b id="v-rate"></b></label><input type="range" id="k-rate" min="0.5" max="2" step="0.05"></div>
+          <div class="knob"><label>volume <b id="v-volume"></b></label><input type="range" id="k-volume" min="0" max="1" step="0.05"></div>
+          <div class="knob"><label>temperature (reloads model) <b id="v-temperature"></b></label><input type="range" id="k-temperature" min="0.1" max="1.5" step="0.05"></div>
+          <div class="knob"><label>idle exit <b id="v-idle_exit_s"></b> s</label><input type="range" id="k-idle_exit_s" min="60" max="3600" step="30"></div>
+          <div class="knob"><label>prefix window <b id="v-project_window_s"></b> s</label><input type="range" id="k-project_window_s" min="60" max="3600" step="30"></div>
+          <div class="knob"><label>deepseek timeout <b id="v-deepseek_timeout_s"></b> s</label><input type="range" id="k-deepseek_timeout_s" min="2" max="30" step="1"></div>
+        </div>
+        <div class="quiet-row">
+          quiet hours
+          <input type="text" class="hhmm" id="q-start" placeholder="00:00" maxlength="5">
+          to
+          <input type="text" class="hhmm" id="q-end" placeholder="08:00" maxlength="5">
+          <button class="btn" id="q-set">set</button>
+          <button class="btn" id="q-clear">clear</button>
+          <span class="hint" id="q-state"></span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <header><h2>Strip Inspector</h2><span>last reply, raw beside what survived cleanup</span></header>
+      <div class="body">
+        <div class="cols">
+          <div><div class="pane-title">raw</div><div class="pane" id="raw-pane">no reply seen yet by this daemon</div></div>
+          <div><div class="pane-title">spoken</div><div class="pane" id="clean-pane">…</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <header><h2>Voice Lab</h2><span>who speaks for whom</span></header>
+      <div class="body">
+        <div class="lab-grid">
+          <div class="assign"><b>claude</b><div class="row"><select id="voice-claude"></select><button class="btn" data-audition="claude">▶</button></div></div>
+          <div class="assign"><b>codex</b><div class="row"><select id="voice-codex"></select><button class="btn" data-audition="codex">▶</button></div></div>
+          <div class="assign"><b>notification</b><div class="row"><select id="voice-notification"></select><button class="btn" data-audition="notification">▶</button></div></div>
+        </div>
+        <div class="pane-title">catalog</div>
+        <div class="chips" id="catalog"></div>
+        <div class="dropzone">voice cloning dormant · accept terms at huggingface.co/kyutai/pocket-tts and run hf auth login, then this becomes a drop-a-wav zone</div>
+      </div>
+    </section>
+
+    <section>
+      <header><h2>Ledger</h2><span>from .voice.log</span></header>
+      <div class="body">
+        <div class="tiles">
+          <div class="tile"><b id="t-talk">…</b><span>est. talk-time in log</span></div>
+          <div class="tile"><b id="t-speaks">…</b><span>speaks in log</span></div>
+          <div class="tile"><b id="t-condense">…</b><span>condense rate</span></div>
+          <div class="tile"><b id="t-tables">…</b><span>tables skipped</span></div>
+        </div>
+        <div class="lanes" id="lanes"></div>
+        <div class="hint" style="margin-top:8px">blips: blue spoken raw · green condensed · yellow table skip · red notification · last 12 hours</div>
+      </div>
+    </section>
+
+    <section>
+      <header><h2>Personality</h2><span>the condense system prompt, spoken taste lives here</span></header>
+      <div class="body">
+        <textarea id="prompt"></textarea>
+        <div class="row-actions">
+          <button class="btn" id="save-prompt">save prompt</button>
+          <button class="btn" id="recondense">re-condense last reply ▶</button>
+          <span class="saved" id="saved-prompt">saved</span>
+        </div>
+        <div class="pane" id="recondense-out" style="display:none"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const api = async (path, body) => {
+      const opts = body ? { method: "POST", body: JSON.stringify(body) } : {};
+      const res = await fetch(path, opts);
+      return res.json();
+    };
+
+    let cfg = null;
+    let entries = [];
+    let dragThresh = null;
+    let saveTimer = null;
+
+    const flash = (id) => {
+      const el = $(id);
+      el.classList.add("show");
+      setTimeout(() => el.classList.remove("show"), 1200);
+    };
+
+    const pushConfig = (patch, savedId) => {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(async () => {
+        const out = await api("/config", patch);
+        cfg = out.config;
+        if (savedId) flash(savedId);
+        renderKnobs(); renderQuiet(); drawHisto();
+      }, 350);
+    };
+
+    // ---- health ----
+    const fmtUp = (s) => s > 3600 ? (s/3600).toFixed(1)+"h" : s > 60 ? Math.round(s/60)+"m" : Math.round(s)+"s";
+    async function pollHealth() {
+      try {
+        const h = await api("/health");
+        $("dot").classList.add("on");
+        $("h-engine").textContent = h.engine;
+        $("h-model").textContent = h.model_loaded ? "loaded" : "cold";
+        $("h-uptime").textContent = fmtUp(h.uptime_s);
+        $("h-rev").textContent = h.git_rev || "?";
+        $("h-spoke").textContent = h.last_spoken_ts ? new Date(h.last_spoken_ts*1000).toLocaleTimeString() : "never";
+      } catch { $("dot").classList.remove("on"); }
+    }
+
+    // ---- mixing desk ----
+    const KNOBS = ["rate","volume","temperature","idle_exit_s","project_window_s","deepseek_timeout_s"];
+    function renderKnobs() {
+      for (const k of KNOBS) {
+        $("k-"+k).value = cfg[k];
+        $("v-"+k).textContent = cfg[k];
+      }
+      $("r-thresh").textContent = dragThresh ?? cfg.max_direct_chars;
+    }
+    for (const k of KNOBS) {
+      $("k-"+k).addEventListener("input", (e) => {
+        $("v-"+k).textContent = e.target.value;
+        pushConfig({ [k]: parseFloat(e.target.value) }, "saved-desk");
+      });
+    }
+
+    function renderQuiet() {
+      const q = cfg.quiet_hours;
+      $("q-start").value = q ? q.start : "";
+      $("q-end").value = q ? q.end : "";
+      $("q-state").textContent = q ? `muted ${q.start}-${q.end}` : "disabled";
+    }
+    $("q-set").onclick = () => {
+      const start = $("q-start").value.trim(), end = $("q-end").value.trim();
+      if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) { $("q-state").textContent = "use HH:MM"; return; }
+      pushConfig({ quiet_hours: { start, end } }, "saved-desk");
+    };
+    $("q-clear").onclick = () => pushConfig({ quiet_hours: null }, "saved-desk");
+
+    // histogram
+    const BUCKET = 50, MAXCH = 1200;
+    function speakChars() {
+      return entries.filter(e => e.event === "speak" && e.kind !== "audition").map(e => e.spoken_chars || 0);
+    }
+    function drawHisto() {
+      const cv = $("histo"), ctx = cv.getContext("2d");
+      const W = cv.width = cv.clientWidth * 2, H = cv.height = 300;
+      ctx.clearRect(0,0,W,H);
+      const chars = speakChars();
+      const nb = Math.ceil(MAXCH / BUCKET);
+      const buckets = new Array(nb).fill(0);
+      for (const c of chars) buckets[Math.min(nb-1, Math.floor(c/BUCKET))]++;
+      const peak = Math.max(1, ...buckets);
+      const bw = W / nb;
+      const thresh = dragThresh ?? (cfg ? cfg.max_direct_chars : 400);
+      for (let i = 0; i < nb; i++) {
+        const h = (buckets[i]/peak) * (H-30);
+        const over = (i+1)*BUCKET > thresh;
+        ctx.fillStyle = over ? "#2e5731" : "#274064";
+        ctx.fillRect(i*bw+2, H-20-h, bw-4, h);
+      }
+      // axis labels
+      ctx.fillStyle = "#6a6a6a"; ctx.font = "20px 'Share Tech Mono', monospace";
+      for (let c = 0; c <= MAXCH; c += 200) ctx.fillText(c, (c/MAXCH)*W + 2, H-4);
+      // threshold line
+      const x = (thresh/MAXCH) * W;
+      ctx.strokeStyle = "#f2c94c"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H-20); ctx.stroke();
+      ctx.fillStyle = "#f2c94c";
+      ctx.fillText(thresh + " chars", Math.min(x+8, W-160), 24);
+      const over = chars.filter(c => c > thresh).length;
+      $("r-thresh").textContent = thresh;
+      $("r-pct").textContent = chars.length ? Math.round(100*over/chars.length) + "%" : "n/a";
+    }
+    (() => {
+      const cv = $("histo");
+      let dragging = false;
+      const toThresh = (e) => {
+        const r = cv.getBoundingClientRect();
+        const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+        return Math.max(50, Math.min(MAXCH, Math.round(frac * MAXCH / 10) * 10));
+      };
+      cv.addEventListener("pointerdown", (e) => { dragging = true; cv.setPointerCapture(e.pointerId); dragThresh = toThresh(e); drawHisto(); });
+      cv.addEventListener("pointermove", (e) => { if (dragging) { dragThresh = toThresh(e); drawHisto(); } });
+      cv.addEventListener("pointerup", () => {
+        dragging = false;
+        if (dragThresh != null) pushConfig({ max_direct_chars: dragThresh }, "saved-desk");
+      });
+    })();
+
+    // ---- strip inspector ----
+    function renderInspector(raw, clean) {
+      if (!raw) return;
+      $("clean-pane").textContent = clean || "(nothing survived, table fallback or empty)";
+      const kept = new Set((clean || "").toLowerCase().split(/\s+/));
+      const frag = document.createDocumentFragment();
+      for (const word of raw.split(/(\s+)/)) {
+        if (/^\s+$/.test(word) || kept.has(word.toLowerCase().replace(/[*_#>\[\]()`]/g, ""))) {
+          frag.appendChild(document.createTextNode(word));
+        } else {
+          const s = document.createElement("span");
+          s.className = "cut"; s.textContent = word;
+          frag.appendChild(s);
+        }
+      }
+      const pane = $("raw-pane");
+      pane.textContent = "";
+      pane.appendChild(frag);
+    }
+
+    // ---- voice lab ----
+    async function initVoices() {
+      const v = await api("/voices");
+      for (const slot of ["claude","codex","notification"]) {
+        const sel = $("voice-"+slot);
+        sel.innerHTML = "";
+        for (const name of v.voices) {
+          const o = document.createElement("option");
+          o.value = name; o.textContent = name.replace(/_/g," ");
+          sel.appendChild(o);
+        }
+        sel.value = v.assigned[slot];
+        sel.addEventListener("change", () => {
+          const voices = {};
+          for (const s of ["claude","codex","notification"]) voices[s] = $("voice-"+s).value;
+          pushConfig({ voices });
+        });
+      }
+      const cat = $("catalog");
+      cat.innerHTML = "";
+      for (const name of v.voices) {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.append(name.replace(/_/g," "));
+        const b = document.createElement("button");
+        b.className = "btn"; b.textContent = "▶";
+        b.onclick = () => api("/audition", { voice: name });
+        chip.appendChild(b);
+        cat.appendChild(chip);
+      }
+      document.querySelectorAll("[data-audition]").forEach((b) => {
+        b.onclick = () => api("/audition", { voice: $("voice-"+b.dataset.audition).value });
+      });
+    }
+
+    // ---- ledger ----
+    function renderLedger() {
+      const speaks = entries.filter(e => e.event === "speak" && e.kind !== "audition");
+      const chars = speaks.reduce((a,e) => a + (e.spoken_chars||0), 0);
+      const mins = chars / 15 / 60;
+      $("t-talk").textContent = mins >= 1 ? mins.toFixed(1) + "m" : Math.round(mins*60) + "s";
+      $("t-speaks").textContent = speaks.length;
+      const condensed = speaks.filter(e => e.condense === "ok").length;
+      $("t-condense").textContent = speaks.length ? Math.round(100*condensed/speaks.length) + "%" : "n/a";
+      $("t-tables").textContent = entries.filter(e => e.table_skipped).length;
+
+      const lanes = $("lanes");
+      lanes.innerHTML = "";
+      const nowS = Date.now()/1000, span = 12*3600;
+      const byProject = {};
+      for (const e of speaks) {
+        if (nowS - e.ts > span) continue;
+        const p = e.project || "(none)";
+        (byProject[p] = byProject[p] || []).push(e);
+      }
+      for (const [p, list] of Object.entries(byProject)) {
+        const lane = document.createElement("div"); lane.className = "lane";
+        const name = document.createElement("div"); name.className = "name"; name.textContent = p;
+        const track = document.createElement("div"); track.className = "track";
+        for (const e of list) {
+          const blip = document.createElement("i");
+          blip.className = "blip" +
+            (e.kind === "notification" ? " notif" : e.table_skipped ? " table" : e.condense === "ok" ? " condensed" : "");
+          const frac = 1 - (nowS - e.ts) / span;
+          const size = Math.max(4, Math.min(14, (e.spoken_chars||0) / 60));
+          blip.style.left = (frac*100) + "%";
+          blip.style.width = blip.style.height = size + "px";
+          blip.title = new Date(e.ts*1000).toLocaleTimeString() + " · " + (e.spoken_chars||0) + " chars";
+          track.appendChild(blip);
+        }
+        lane.append(name, track);
+        lanes.appendChild(lane);
+      }
+      if (!Object.keys(byProject).length) lanes.innerHTML = '<span class="hint">nothing spoken in the last 12 hours</span>';
+    }
+
+    // ---- personality ----
+    $("save-prompt").onclick = () => pushConfig({ condense_prompt: $("prompt").value }, "saved-prompt");
+    $("recondense").onclick = async () => {
+      $("recondense").disabled = true;
+      const out = await api("/recondense", {});
+      $("recondense-out").style.display = "block";
+      $("recondense-out").textContent = out.ok ? out.text : "no long reply seen yet by this daemon";
+      $("recondense").disabled = false;
+    };
+
+    $("shutup").onclick = () => api("/stop", {});
+
+    // ---- boot + poll ----
+    async function pollLog() {
+      try {
+        const t = await api("/log/tail?limit=300");
+        entries = t.entries || [];
+        drawHisto(); renderLedger(); renderInspector(t.last_raw, t.last_clean);
+      } catch {}
+    }
+    (async () => {
+      const c = await api("/config");
+      cfg = c.config;
+      renderKnobs(); renderQuiet();
+      $("prompt").value = cfg.condense_prompt;
+      await initVoices();
+      await pollLog();
+      await pollHealth();
+      setInterval(pollHealth, 5000);
+      setInterval(pollLog, 6000);
+      addEventListener("resize", drawHisto);
+    })();
+  </script>
+</body>
+</html>

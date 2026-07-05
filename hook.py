@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import os
 import subprocess
 import sys
 import time
@@ -85,6 +86,8 @@ def main() -> int:
         request("/stop", {"cwd": payload.get("cwd")}, 0.08)
         return 0
 
+    agent = "claude" if os.environ.get("CLAUDE_PROJECT_DIR") else "codex"
+
     if event == "Notification":
         cwd = payload.get("cwd")
         project = Path(cwd).name if cwd else "This project"
@@ -94,6 +97,7 @@ def main() -> int:
                 "text": f"{project} needs your input",
                 "ts": time.time(),
                 "cwd": cwd,
+                "agent": agent,
                 "session_id": payload.get("session_id"),
                 "turn_id": payload.get("turn_id") or payload.get("prompt_id"),
             }
@@ -104,7 +108,8 @@ def main() -> int:
         return 0
 
     text = payload.get("last_assistant_message") or ""
-    if not text.strip():
+    transcript_path = payload.get("transcript_path")
+    if not text.strip() and not transcript_path:
         return 0
 
     speak(
@@ -113,6 +118,8 @@ def main() -> int:
             "text": text,
             "ts": time.time(),
             "cwd": payload.get("cwd"),
+            "agent": agent,
+            "transcript_path": transcript_path,
             "session_id": payload.get("session_id"),
             "turn_id": payload.get("turn_id") or payload.get("prompt_id"),
         }
