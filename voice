@@ -1,0 +1,46 @@
+#!/bin/bash
+# voice: poke the let-there-be-voice daemon from any terminal.
+# usage: voice status | stop | mute | unmute | say "text"
+set -u
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+PY="$ROOT/.venv/bin/python"
+BASE="http://127.0.0.1:7333"
+KILL="$ROOT/.voice-disabled"
+
+case "${1:-}" in
+  status)
+    if OUT=$(curl -sf -m 2 "$BASE/health"); then
+      echo "$OUT" | "$PY" -m json.tool
+    else
+      echo "daemon: down"
+    fi
+    [ -f "$KILL" ] && echo "kill switch: ON (.voice-disabled present)" || echo "kill switch: off"
+    ;;
+  stop)
+    curl -sf -m 2 -X POST "$BASE/stop" -d '{}' >/dev/null && echo "stopped" || echo "daemon down, nothing to stop"
+    ;;
+  mute)
+    touch "$KILL" && echo "muted (.voice-disabled created)"
+    ;;
+  unmute)
+    rm -f "$KILL" && echo "unmuted"
+    ;;
+  say)
+    shift
+    [ $# -ge 1 ] || { echo "usage: voice say \"text\""; exit 1; }
+    PAYLOAD=$(printf '%s' "$*" | "$PY" -c 'import json,sys; print(json.dumps({"text": sys.stdin.read()}))')
+    if ! curl -sf -m 2 -X POST "$BASE/speak" -d "$PAYLOAD" >/dev/null 2>&1; then
+      nohup "$PY" "$ROOT/daemon.py" >/dev/null 2>&1 &
+      for _ in $(seq 1 40); do
+        curl -sf -m 1 "$BASE/health" >/dev/null 2>&1 && break
+        sleep 0.25
+      done
+      curl -sf -m 2 -X POST "$BASE/speak" -d "$PAYLOAD" >/dev/null 2>&1
+    fi
+    echo "queued"
+    ;;
+  *)
+    echo "usage: voice status|stop|mute|unmute|say \"text\""
+    exit 1
+    ;;
+esac
