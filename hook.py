@@ -91,6 +91,7 @@ def main() -> int:
             "event": event,
             "text": text,
             "ts": time.time(),
+            "cwd": payload.get("cwd"),
             "session_id": payload.get("session_id"),
             "turn_id": payload.get("turn_id") or payload.get("prompt_id"),
         },

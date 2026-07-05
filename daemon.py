@@ -13,6 +13,7 @@ import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent
 HOST = "127.0.0.1"
 PORT = 7333
 IDLE_EXIT_S = 600
@@ -21,6 +22,13 @@ ENGINE = "pocket"
 DEEPSEEK_SETTINGS = Path.home() / ".claude" / "settings.deepseek.json"
 DEEPSEEK_FAILED_TEXT = "DeepSeek failed. I could not condense this long reply."
 DEEPSEEK_TIMEOUT_S = 12
+TABLE_FALLBACK_TEXT = (
+    "I made a table for this, but I won't read the whole thing out loud. "
+    "Take a look and tell me what you think."
+)
+PROJECT_WINDOW_S = 600
+PREFIX_TEMPLATES = ("In {project}: ", "From {project}: ", "Update from {project}: ")
+LOG_PATH = ROOT / ".voice.log"
 
 
 state_lock = threading.Lock()
@@ -29,6 +37,8 @@ worker_running = False
 generation = 0
 active_player = None
 last_activity = time.monotonic()
+recent_projects = {}
+prefix_counter = 0
 
 tts_model = None
 tts_voice_state = None
@@ -57,6 +67,44 @@ def read_json(handler: BaseHTTPRequestHandler) -> dict:
     if length <= 0:
         return {}
     return json.loads(handler.rfile.read(length).decode("utf-8"))
+
+
+def append_log(event: str, **fields) -> None:
+    try:
+        payload = {"ts": round(time.time(), 3), "event": event, **fields}
+        with LOG_PATH.open("a") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
+    except Exception:
+        return
+
+
+def is_table_line(line: str) -> bool:
+    s = line.strip()
+    if not s:
+        return False
+    if s.count("|") < 2:
+        return False
+    return s.startswith("|") or s.endswith("|") or bool(re.search(r"\w\s*\|\s*\w", s))
+
+
+def strip_markdown_tables(raw: str) -> tuple[str, dict]:
+    kept = []
+    table_lines = 0
+    separator_lines = 0
+    for line in raw.splitlines():
+        if is_table_line(line):
+            table_lines += 1
+            if re.fullmatch(r"\s*\|?[\s:|-]+\|[\s:|-|]*", line.strip()):
+                separator_lines += 1
+            continue
+        kept.append(line)
+
+    data_rows = max(0, table_lines - separator_lines - 1) if table_lines else 0
+    return "\n".join(kept), {
+        "table_lines": table_lines,
+        "table_rows": data_rows,
+        "table_skipped": table_lines > 0,
+    }
 
 
 def strip_markdown(text: str) -> str:
@@ -108,11 +156,12 @@ def condense(text: str) -> str | None:
                 {
                     "role": "system",
                     "content": (
-                        "You are the voice output layer for Claude Code, an AI coding assistant. "
-                        "The user hears you, not reads you. "
-                        "Summarize the assistant's reply into 2-3 natural spoken sentences. "
-                        "Be conversational, like telling a friend what just happened. "
-                        "Drop all code, paths, URLs, and formatting."
+                        "You are speaking for a coding agent after it finishes a turn. "
+                        "The user hears this out loud, so sound like a calm coding partner, not a report. "
+                        "Say what changed, what matters, or what the user should notice next. "
+                        "Use 2-3 short natural sentences. "
+                        "Do not read tables, code, diffs, file paths, URLs, markdown, bullets, or headings. "
+                        "If the reply mostly contains a table, say that a table was made and invite the user to inspect it."
                     ),
                 },
                 {
@@ -142,16 +191,53 @@ def condense(text: str) -> str | None:
     return None
 
 
-def prepare_text(raw: str) -> str:
-    text = strip_markdown(raw or "")
+def prepare_speech(raw: str) -> tuple[str, dict]:
+    tableless, meta = strip_markdown_tables(raw or "")
+    text = strip_markdown(tableless)
     if not text:
-        return ""
+        if meta["table_skipped"]:
+            meta["table_fallback"] = True
+            return TABLE_FALLBACK_TEXT, meta
+        return "", meta
     if len(text) > MAX_DIRECT_CHARS:
         condensed = condense(text)
         if condensed is None:
-            return DEEPSEEK_FAILED_TEXT
-        return strip_markdown(condensed)
-    return text
+            meta["condense"] = "failed"
+            return DEEPSEEK_FAILED_TEXT, meta
+        meta["condense"] = "ok"
+        return strip_markdown(condensed), meta
+    meta["condense"] = "not_needed"
+    return text, meta
+
+
+def prepare_text(raw: str) -> str:
+    return prepare_speech(raw)[0]
+
+
+def project_name(cwd: str | None) -> str | None:
+    if not cwd:
+        return None
+    name = Path(cwd).name.strip()
+    return name or None
+
+
+def prefix_for_project(project: str | None) -> tuple[str, bool]:
+    global prefix_counter
+    if not project:
+        return "", False
+
+    cutoff = now() - PROJECT_WINDOW_S
+    with state_lock:
+        for name, seen_at in list(recent_projects.items()):
+            if seen_at < cutoff:
+                del recent_projects[name]
+        recent_projects[project] = now()
+        should_prefix = len(recent_projects) > 1
+        if not should_prefix:
+            return "", False
+        template = PREFIX_TEMPLATES[prefix_counter % len(PREFIX_TEMPLATES)]
+        prefix_counter += 1
+    return template.format(project=project), True
 
 
 def load_pocket():
@@ -232,21 +318,35 @@ def worker() -> None:
             if job is None:
                 worker_running = False
                 return
-        gen, raw = job
-        text = prepare_text(raw)
+        gen, raw, cwd = job
+        text, meta = prepare_speech(raw)
         if not text:
+            append_log("skip_empty", cwd=cwd, **meta)
             continue
+        project = project_name(cwd)
+        prefix, prefixed = prefix_for_project(project)
+        if prefixed:
+            text = prefix + text
+        append_log(
+            "speak",
+            cwd=cwd,
+            project=project,
+            prefixed=prefixed,
+            prefix=prefix.strip(),
+            spoken_chars=len(text),
+            **meta,
+        )
         wav_path = synthesize(text, gen)
         if wav_path is not None:
             play(wav_path, gen)
 
 
-def enqueue_speak(raw: str) -> int:
+def enqueue_speak(raw: str, cwd: str | None = None) -> int:
     global pending, worker_running, generation
     with state_lock:
         generation += 1
         gen = generation
-        pending = (gen, raw)
+        pending = (gen, raw, cwd)
         if not worker_running:
             worker_running = True
             threading.Thread(target=worker, daemon=True).start()
@@ -294,10 +394,11 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/speak":
                 data = read_json(self)
                 text = data.get("text") or data.get("last_assistant_message") or ""
+                cwd = data.get("cwd")
                 if not text.strip():
                     json_response(self, 202, {"ok": True, "skipped": True})
                     return
-                gen = enqueue_speak(text)
+                gen = enqueue_speak(text, cwd)
                 json_response(self, 202, {"ok": True, "generation": gen})
                 return
             json_response(self, 404, {"error": "not_found"})
