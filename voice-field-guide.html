@@ -111,7 +111,7 @@
 
     .links {
       display: grid;
-      grid-template-columns: repeat(9, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: 6px;
     }
 
@@ -394,9 +394,11 @@
         <a href="#boot">Fresh Boot <small>04</small></a>
         <a href="#sleep">Sleep Cycle <small>05</small></a>
         <a href="#interrupt">Interrupt <small>06</small></a>
-        <a href="#long">Long Answers <small>07</small></a>
-        <a href="#shutdown">Shutdown <small>08</small></a>
-        <a href="#test">How To Test <small>09</small></a>
+        <a href="#projects">Two Projects <small>07</small></a>
+        <a href="#long">Long Answers <small>08</small></a>
+        <a href="#kill">Kill Switch <small>09</small></a>
+        <a href="#shutdown">Shutdown <small>10</small></a>
+        <a href="#test">How To Test <small>11</small></a>
       </nav>
     </aside>
 
@@ -496,26 +498,58 @@
           </div>
           <div class="state">
             <h3>What this means in practice</h3>
-            <p>If you interrupt the agent, the old speech is treated as obsolete. The system is supposed to respect your attention, not keep narrating stale output.</p>
+            <p>If you interrupt the agent, the old speech is treated as obsolete. The stop is scoped to the project you typed in, so a second project speaking at the same time keeps talking. The system respects your attention, not stale output.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="projects">
+        <div class="section-head">
+          <span class="idx">07</span>
+          <h2>Two Projects</h2>
+          <p>When more than one agent is talking.</p>
+        </div>
+        <div class="story">
+          <div class="timeline">
+            <div class="step"><b>Two agents, two repos</b><span>Claude in one project, Codex in another, both finishing turns within minutes of each other. This is the normal evening, not the edge case.</span></div>
+            <div class="step"><b>The voice names the source</b><span>Replies get a spoken prefix: "In hire", "From let-there-be-voice", "Update from hire". The wording rotates so it never sounds robotic.</span></div>
+            <div class="step"><b>Interrupts stay local</b><span>Typing in one project silences only that project's speech. The other one keeps talking.</span></div>
+          </div>
+          <div class="state">
+            <h3>When prefixes appear</h3>
+            <p>Only when more than one project has spoken in the last ten minutes. Solo work stays clean and unprefixed.</p>
           </div>
         </div>
       </section>
 
       <section id="long">
         <div class="section-head">
-          <span class="idx">07</span>
+          <span class="idx">08</span>
           <h2>Long Answers</h2>
           <p>Why everything is not spoken verbatim.</p>
         </div>
-        <div class="grid cols-2">
+        <div class="grid cols-3">
           <div class="card pad metric"><b>Short replies</b><span>These can be spoken almost directly, so the answer stays crisp and human.</span></div>
-          <div class="card pad metric"><b>Long replies</b><span>These get reduced to a single spoken sentence, so the speaker does not ramble through code, diffs, or dense prose.</span></div>
+          <div class="card pad metric"><b>Long replies</b><span>These get condensed into a two or three sentence spoken summary, so the speaker does not ramble through dense prose.</span></div>
+          <div class="card pad metric"><b>Tables</b><span>A reply that is mostly a table is never read row by row. The voice says a table was made and invites you to look at it.</span></div>
+        </div>
+      </section>
+
+      <section id="kill">
+        <div class="section-head">
+          <span class="idx">09</span>
+          <h2>Kill Switch</h2>
+          <p>Silence on demand.</p>
+        </div>
+        <div class="grid cols-2">
+          <div class="card pad metric"><b>Mute everything</b><span>Drop a file named <code>.voice-disabled</code> in the repo root. The hook sees it before anything else and refuses to wake the daemon or speak. No restart, no config.</span></div>
+          <div class="card pad metric"><b>Unmute</b><span>Delete the file. The next completed turn just speaks again, as if nothing happened.</span></div>
         </div>
       </section>
 
       <section id="shutdown">
         <div class="section-head">
-          <span class="idx">08</span>
+          <span class="idx">10</span>
           <h2>Shutdown</h2>
           <p>What happens when you close the day.</p>
         </div>
@@ -533,7 +567,7 @@
 
       <section id="test">
         <div class="section-head">
-          <span class="idx">09</span>
+          <span class="idx">11</span>
           <h2>How To Test</h2>
           <p>Simple confidence checks.</p>
         </div>
@@ -542,14 +576,16 @@
           <div class="card pad metric"><b>Manual hook</b><span>Feed a fake completed turn to the hook and listen for speech. That tests the path end to end.</span></div>
           <div class="card pad metric"><b>Claude turn</b><span>Run a normal Claude Code reply and let the real Stop hook fire.</span></div>
           <div class="card pad metric"><b>Codex turn</b><span>Run a normal Codex reply once the hook is trusted, and confirm the same behavior there.</span></div>
+          <div class="card pad metric"><b>Kill switch</b><span>Create <code>.voice-disabled</code>, run a turn, confirm silence. Delete it, confirm the voice comes back.</span></div>
+          <div class="card pad metric"><b>The log</b><span>Every spoken or skipped reply lands in <code>.voice.log</code>, with what was stripped, condensed, and prefixed.</span></div>
         </div>
       </section>
 
       <section>
         <div class="note">
-          The story is simple: agents finish, voice speaks, new input stops it, and a fresh day starts the same sequence again.
+          The story is simple: agents finish, the voice speaks, naming the project when two are talking, new input stops it, and a fresh day starts the same sequence again.
         </div>
-        <p class="footer"><span>confidential</span><span>let-there-be-voice · field guide · 2026-07-05</span><span>aereo cloud</span></p>
+        <p class="footer"><span>software for one</span><span>let-there-be-voice · field guide · 2026-07-06</span><span>local first</span></p>
       </section>
     </main>
   </div>
