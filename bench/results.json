@@ -1,0 +1,29 @@
+{
+  "selected": "pocket",
+  "gate": {
+    "warm_first_audio_s_lt": 1.0,
+    "rss_mb_lt": 1024
+  },
+  "results": [
+    {
+      "engine": "pocket",
+      "status": "ok",
+      "load_s": 1.134,
+      "warm_first_audio_s": 0.05,
+      "warm_full_s": 0.412,
+      "rss_mb": 920.6,
+      "wav": "bench/pocket.wav"
+    }
+  ],
+  "skipped": [
+    {
+      "engine": "supertonic-3-int8",
+      "reason": "Skipped because Pocket TTS was the first candidate and passed the gate."
+    },
+    {
+      "engine": "kokoro-mlx-audio",
+      "reason": "Skipped because Pocket TTS was the first candidate and passed the gate."
+    }
+  ],
+  "runtime_note": "Python 3.12 was unavailable locally and uv managed install stalled; project uses installed Python 3.11.15."
+}

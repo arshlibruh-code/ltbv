@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>let-there-be-voice · Build Packet</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #141414;
+      --panel: #1a1a1a;
+      --panel-2: #1f1f1f;
+      --line: #2b2b2b;
+      --line-soft: #242424;
+      --text: #e8e8e8;
+      --muted: #9a9a9a;
+      --faint: #6a6a6a;
+      --green: #58d68d;
+      --blue: #68a4ff;
+      --yellow: #f2c94c;
+      --red: #ff6b6b;
+      --mono: "Share Tech Mono", ui-monospace, Menlo, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    }
+
+    * { box-sizing: border-box; border-radius: 0 !important; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; }
+    code, .num, pre { font-family: var(--mono); }
+    code { color: var(--blue); font-size: 12px; }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 14px;
+      border-right: 1px solid var(--line);
+      background: #111111;
+      overflow: auto;
+    }
+
+    .brand { padding-bottom: 12px; border-bottom: 1px solid var(--line-soft); margin-bottom: 10px; }
+    .brand h1 { margin: 0 0 4px; font-size: 15px; line-height: 1.1; }
+    .brand p { margin: 0; color: var(--muted); font-size: 11px; }
+
+    .nav a {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      border: 1px solid transparent;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .nav a:hover, .nav a:focus { color: var(--text); border-color: var(--line); background: var(--panel); outline: none; }
+    .nav small { color: var(--faint); font-family: var(--mono); font-size: 10px; }
+
+    .content { min-width: 0; padding: 16px 18px 40px; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      margin: -16px -18px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(17, 17, 17, 0.95);
+      backdrop-filter: blur(8px);
+    }
+
+    .calls { display: flex; flex-wrap: wrap; gap: 6px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .dot { width: 6px; height: 6px; background: var(--green); }
+
+    .btn {
+      padding: 5px 9px;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .btn:hover { border-color: var(--blue); }
+
+    section { scroll-margin-top: 70px; margin: 0 0 22px; }
+
+    .section-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+    h2 { margin: 0; font-size: 14px; }
+    .section-head p { margin: 0; color: var(--faint); font-size: 11px; }
+    .section-head .idx { color: var(--faint); font-family: var(--mono); font-size: 11px; }
+
+    .grid { display: grid; gap: 8px; }
+    .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .grid.cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+    .card { border: 1px solid var(--line); background: var(--panel); overflow: hidden; }
+    .card.pad { padding: 10px; }
+
+    .metric b { display: block; margin-bottom: 3px; font-size: 12px; }
+    .metric span { color: var(--muted); font-size: 11px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 7px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; text-align: left; }
+    th {
+      color: var(--faint);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: #171717;
+    }
+    tr:last-child td { border-bottom: 0; }
+    td:first-child { color: var(--text); font-weight: 600; }
+    td { color: var(--muted); }
+    td .num, th .num { font-size: 11px; }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 6px;
+      background: #10281b;
+      color: var(--green);
+      font-family: var(--mono);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+    .tag.blue { background: #16233a; color: var(--blue); }
+    .tag.yellow { background: #2b250f; color: var(--yellow); }
+    .tag.red { background: #2e1416; color: var(--red); }
+
+    .flow { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 8px; }
+    .node { position: relative; min-height: 84px; padding: 10px; border: 1px solid var(--line); background: var(--panel); }
+    .node:not(:last-child)::after {
+      content: ">";
+      position: absolute;
+      right: -8px;
+      top: 34px;
+      width: 15px;
+      height: 15px;
+      border: 1px solid var(--line);
+      background: var(--bg);
+      color: var(--faint);
+      display: grid;
+      place-items: center;
+      font-family: var(--mono);
+      font-size: 9px;
+      z-index: 1;
+    }
+    .node b { display: block; margin-bottom: 4px; font-size: 12px; }
+    .node span { display: block; color: var(--muted); font-size: 11px; }
+
+    .board { display: grid; grid-template-columns: repeat(5, minmax(160px, 1fr)); gap: 8px; overflow-x: auto; }
+    .phase { min-height: 140px; padding: 10px; border: 1px solid var(--line); background: var(--panel); }
+    .phase header { display: flex; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
+    .phase h3 { margin: 0; font-size: 12px; }
+    .phase ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+
+    .code { border: 1px solid var(--line); background: #101010; overflow: hidden; }
+    .code header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--line-soft);
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    pre { margin: 0; padding: 10px; overflow: auto; color: #cfe3ff; font-size: 11px; line-height: 1.55; }
+
+    .filter-row {
+      display: grid;
+      grid-template-columns: 130px minmax(0, 1fr) 100px;
+      gap: 8px;
+      align-items: center;
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .filter-row:last-child { border-bottom: 0; }
+    .filter-row b { font-size: 12px; }
+    .filter-row span { color: var(--muted); font-size: 11px; }
+
+    .note { border-left: 2px solid var(--blue); padding: 8px 10px; background: var(--panel); color: var(--muted); font-size: 12px; }
+    .footer { margin-top: 26px; color: var(--faint); font-size: 11px; }
+
+    @media (max-width: 1060px) {
+      .shell { grid-template-columns: 1fr; }
+      .nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+      .nav .links { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+      .topbar { position: static; }
+      .grid.cols-2, .grid.cols-4, .grid.cols-5 { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; }
+      .node::after { display: none !important; }
+      .board { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
+    }
+
+    @media (max-width: 640px) {
+      .content { padding: 12px; }
+      .topbar { margin: -12px -12px 14px; }
+      .nav .links { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .board { grid-template-columns: 1fr; }
+      .filter-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="nav">
+      <div class="brand">
+        <h1>let-there-be-voice</h1>
+        <p>Source of truth. Local voice for Codex + Claude Code via Stop hooks.</p>
+      </div>
+      <nav class="links" aria-label="Sections">
+        <a href="#final-calls">Final Calls <small>01</small></a>
+        <a href="#prd">PRD <small>02</small></a>
+        <a href="#architecture">Architecture <small>03</small></a>
+        <a href="#speech-policy">Speech Policy <small>04</small></a>
+        <a href="#invariants">Invariants <small>05</small></a>
+        <a href="#roadmap">Roadmap <small>06</small></a>
+        <a href="#wiring">Wiring <small>07</small></a>
+        <a href="#decisions">Locked Decisions <small>08</small></a>
+        <a href="#risks">Risks <small>09</small></a>
+        <a href="#prompt">Codex Prompt <small>10</small></a>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="topbar">
+        <div class="calls">
+          <span class="pill"><i class="dot"></i> Hooks, not PTY</span>
+          <span class="pill">Python <span class="num">3.12</span> + uv</span>
+          <span class="pill">TTS bench: Pocket / Supertonic / Kokoro</span>
+          <span class="pill">Daemon <span class="num">:7333</span></span>
+          <span class="pill">M3 · <span class="num">16GB</span> · codex <span class="num">0.142.5</span></span>
+        </div>
+        <div class="actions">
+          <button class="btn" data-copy="#codex-prompt">Copy Codex prompt</button>
+        </div>
+      </div>
+
+      <section id="final-calls">
+        <div class="section-head"><span class="idx">01</span><h2>Final Calls</h2><p>Post-research. Supersedes the old PTY plan entirely.</p></div>
+        <div class="grid cols-4">
+          <div class="card pad metric"><b>Capture</b><span>Stop hooks in both CLIs deliver <code>last_assistant_message</code> as JSON on stdin. No PTY, no ANSI parsing, ever.</span></div>
+          <div class="card pad metric"><b>TTS</b><span>Bench gate: Pocket TTS, then Supertonic-3 int8, then Kokoro-82M via mlx-audio. First to pass &lt;<span class="num">1s</span> warm + &lt;<span class="num">1GB</span> RAM wins.</span></div>
+          <div class="card pad metric"><b>Daemon</b><span>Localhost HTTP on <span class="num">7333</span>. Owns cleanup, condense, synthesis, playback. Lazy model load, exits after <span class="num">10</span> min idle.</span></div>
+          <div class="card pad metric"><b>Hook</b><span>Dumb forwarder. POSTs raw event + text to the daemon and exits in tens of ms. No network, no logic, no uv resolution: invoked as <code>.venv/bin/python</code> by absolute path.</span></div>
+        </div>
+      </section>
+
+      <section id="prd">
+        <div class="section-head"><span class="idx">02</span><h2>One-Page PRD</h2><p>Scope narrow enough to finish.</p></div>
+        <div class="card">
+          <table>
+            <thead><tr><th>Item</th><th>Call</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>Product</td><td>Speak the final response of every Codex and Claude Code turn, automatically, via hooks. No wrapper command, agents run as normal.</td><td><span class="tag">MVP</span></td></tr>
+              <tr><td>User flow</td><td>Zero. Hooks fire on their own. New input kills speech instantly.</td><td><span class="tag">MVP</span></td></tr>
+              <tr><td>Privacy</td><td>All synthesis and audio local. One asterisk: long responses go to DeepSeek for condensing.</td><td><span class="tag yellow">1 asterisk</span></td></tr>
+              <tr><td>Latency</td><td>Warm first-audio under <span class="num">1s</span>. Hook exits within <span class="num">~100ms</span>.</td><td><span class="tag yellow">Gate</span></td></tr>
+              <tr><td>Voice in</td><td>Not built. Hex (<code>com.kitlangton.Hex</code>, Parakeet STT) already covers it. This tool is one-way: agent to speaker.</td><td><span class="tag red">Non-goal</span></td></tr>
+              <tr><td>Non-goals</td><td>No PTY wrapper, no UI, no voice cloning, no packaging, no framework, no support for agents I don't use.</td><td><span class="tag red">Avoid</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="architecture">
+        <div class="section-head"><span class="idx">03</span><h2>Architecture</h2><p>The whole thing is a hundred-ish lines.</p></div>
+        <div class="flow">
+          <div class="node"><b>Agent CLI</b><span>Codex <span class="num">0.142.5</span> or Claude Code. Untouched, unwrapped.</span></div>
+          <div class="node"><b>Stop hook</b><span>Fires on turn end. JSON on stdin carries <code>last_assistant_message</code>.</span></div>
+          <div class="node"><b>hook.py</b><span>Dumb forwarder: POST <code>{event, text, ts}</code> to daemon, auto-start it if down, exit. Nothing else.</span></div>
+          <div class="node"><b>daemon.py</b><span>Port <span class="num">7333</span>. <code>/speak</code>, <code>/stop</code>, <code>/health</code>. Cleanup + DeepSeek condense + synthesis, all async. Lazy load, <span class="num">10</span> min idle exit.</span></div>
+          <div class="node"><b>Playback</b><span>One active + one pending, newest wins, generation IDs gate stale requests. <code>UserPromptSubmit</code> hits <code>/stop</code>.</span></div>
+        </div>
+      </section>
+
+      <section id="speech-policy">
+        <div class="section-head"><span class="idx">04</span><h2>Speech Policy</h2><p>Where all the taste lives.</p></div>
+        <div class="card">
+          <div class="filter-row"><b>Speak</b><span>Final assistant prose under <span class="num">~350</span> chars, after markdown strip.</span><span class="tag">Yes</span></div>
+          <div class="filter-row"><b>Never speak</b><span>Code, diffs, stack traces, raw file paths, URLs verbatim. Drop code fences before anything else.</span><span class="tag red">No</span></div>
+          <div class="filter-row"><b>Condense</b><span>Over <span class="num">~350</span> chars: one natural spoken sentence via <code>deepseek-v4-flash</code>, called by the daemon, never the hook. API fails: speak the first sentence instead.</span><span class="tag yellow">DeepSeek</span></div>
+          <div class="filter-row"><b>Interrupt</b><span><code>UserPromptSubmit</code> in either CLI posts <code>/stop</code>. Speech dies instantly.</span><span class="tag blue">Required</span></div>
+          <div class="filter-row"><b>Queue</b><span>One active utterance, one pending slot, newest pending wins.</span><span class="tag blue">Simple</span></div>
+        </div>
+      </section>
+
+      <section id="invariants">
+        <div class="section-head"><span class="idx">05</span><h2>Invariants</h2><p>Never break these. Everything else is the model's job.</p></div>
+        <div class="card">
+          <table>
+            <tbody>
+              <tr><td>Never block the agent</td><td>Hook exits within <span class="num">~100ms</span>: it only POSTs and dies. All cleanup, condensing, synthesis, and playback happen async in the daemon. Hook is invoked as <code>.venv/bin/python</code> by absolute path (warm uv run measured <span class="num">40-90ms</span>, too knife-edge).</td></tr>
+              <tr><td>Race-safe</td><td>Daemon start is bind-winner: both CLIs may fire at once, first to bind <span class="num">:7333</span> wins, loser just POSTs. Generation counter on utterances: a stale <code>/speak</code> can never resurrect speech after a newer <code>/stop</code>. <code>/stop</code> kills the whole <code>afplay</code> process group.</td></tr>
+              <tr><td>Silence over noise</td><td>Any failure (daemon down, API error, malformed payload) means no sound and exit <span class="num">0</span>. Errors never leak into the agent session.</td></tr>
+              <tr><td>Never speak code</td><td>No code, diffs, stack traces, or raw paths, under any condition.</td></tr>
+              <tr><td>Instant interrupt</td><td>New user input kills current speech immediately.</td></tr>
+              <tr><td>Local, one asterisk</td><td>Everything runs on-device except the single DeepSeek condense call.</td></tr>
+              <tr><td>Stay small</td><td>No framework, no packaging, no config UI, no tests beyond the bench script. A handful of files. Personal tool, not a product.</td></tr>
+              <tr><td>Secrets</td><td>DeepSeek token read at runtime from <code>~/.claude/settings.deepseek.json</code>. Never stored or committed in this repo.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="roadmap">
+        <div class="section-head"><span class="idx">06</span><h2>Roadmap</h2><p>One commit per phase, plain messages.</p></div>
+        <div class="board">
+          <article class="phase">
+            <header><h3>0. Verify</h3><span class="tag yellow">First</span></header>
+            <ul>
+              <li>Payload keys already confirmed in both binaries (strings scan, 2026-07-05)</li>
+              <li>Still dump one real Stop payload per CLI: keys existing &ne; keys populated</li>
+              <li>Confirm DeepSeek token readable at runtime</li>
+              <li>Remove temp hooks, commit nothing</li>
+            </ul>
+          </article>
+          <article class="phase">
+            <header><h3>1. TTS Bench</h3><span class="tag yellow">Gate</span></header>
+            <ul>
+              <li>Pocket TTS, Supertonic-3 int8, Kokoro mlx-audio, in that order</li>
+              <li>Note: pocket-tts requires PyTorch <span class="num">2.5+</span>, heaviest install of the three; count torch's RAM against the gate honestly</li>
+              <li>Warm first-audio on <span class="num">~15</span> word sentence, resident RAM</li>
+              <li>Pass: &lt;<span class="num">1s</span> and &lt;<span class="num">1GB</span>, pick by numbers, no pause</li>
+              <li>Save one sample WAV per candidate to <code>bench/</code> for after-the-fact ear test; engine is one swappable constant in <code>daemon.py</code></li>
+            </ul>
+          </article>
+          <article class="phase">
+            <header><h3>2. Daemon</h3><span class="tag">Core</span></header>
+            <ul>
+              <li><code>daemon.py</code>, localhost <span class="num">:7333</span>, bind-winner start</li>
+              <li><code>/speak</code> <code>/stop</code> <code>/health</code>, generation IDs</li>
+              <li>Cleanup + DeepSeek condense here, async</li>
+              <li>Lazy load, <span class="num">10</span> min idle exit, <code>/stop</code> kills afplay process group</li>
+            </ul>
+          </article>
+          <article class="phase">
+            <header><h3>3. Hook</h3><span class="tag">Core</span></header>
+            <ul>
+              <li><code>hook.py</code>, shared by both agents</li>
+              <li>POST raw <code>{event, text, ts}</code> only, no logic, no network beyond localhost</li>
+              <li>Auto-start daemon if down</li>
+              <li><code>UserPromptSubmit</code> posts <code>/stop</code></li>
+            </ul>
+          </article>
+          <article class="phase">
+            <header><h3>4. Wire</h3><span class="tag">MVP</span></header>
+            <ul>
+              <li>Claude Code first: <code>settings.json</code>, verify real turn</li>
+              <li>Then Codex: <code>config.toml</code>, verify real turn</li>
+              <li>End-to-end done</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section id="wiring">
+        <div class="section-head"><span class="idx">07</span><h2>Wiring</h2><p>Hook registration, both CLIs, same script.</p></div>
+        <div class="grid cols-2">
+          <div class="code">
+            <header><span>~/.claude/settings.json</span><button class="btn" data-copy="#cfg-claude">Copy</button></header>
+            <pre id="cfg-claude">{
+  "hooks": {
+    "Stop": [{ "hooks": [{
+      "type": "command",
+      "command": "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/python /Users/arshad/Desktop/personal/code/let-there-be-voice/hook.py"
+    }]}],
+    "UserPromptSubmit": [{ "hooks": [{
+      "type": "command",
+      "command": "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/python /Users/arshad/Desktop/personal/code/let-there-be-voice/hook.py"
+    }]}]
+  }
+}</pre>
+          </div>
+          <div class="code">
+            <header><span>~/.codex/config.toml</span><button class="btn" data-copy="#cfg-codex">Copy</button></header>
+            <pre id="cfg-codex">[[hooks.Stop]]
+
+[[hooks.Stop.hooks]]
+type = "command"
+command = "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/python /Users/arshad/Desktop/personal/code/let-there-be-voice/hook.py"
+
+[[hooks.UserPromptSubmit]]
+
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/python /Users/arshad/Desktop/personal/code/let-there-be-voice/hook.py"</pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="decisions">
+        <div class="section-head"><span class="idx">08</span><h2>Locked Decisions</h2><p>Answered 2026-07-05. Not open for relitigation.</p></div>
+        <div class="card">
+          <table>
+            <thead><tr><th>Question</th><th>Decision</th><th>Why</th></tr></thead>
+            <tbody>
+              <tr><td>Capture method</td><td>Hooks only, no PTY fallback</td><td>Both CLIs ship <code>last_assistant_message</code> in the Stop payload. PTY-era rationale is dead.</td></tr>
+              <tr><td>Agent order</td><td>Claude Code first, Codex second</td><td>Older hook system, known-working examples. Codex is a config paste after.</td></tr>
+              <tr><td>Long responses</td><td>DeepSeek <code>deepseek-v4-flash</code> condense, in the daemon</td><td>Credits already there, Anthropic-compatible endpoint, token in <code>settings.deepseek.json</code>. Moved out of the hook after Codex review (2026-07-05): network in the hook breaks the <span class="num">100ms</span> invariant.</td></tr>
+              <tr><td>Bench order</td><td>Pocket, Supertonic-3, Kokoro</td><td>Codex review: Supertonic is ONNX-native with the cleanest integration surface; mlx-audio drags in a bigger dependency tree. No Piper, macOS <code>say</code> is already the stopgap.</td></tr>
+              <tr><td>Voice</td><td>Stock preset, calm, slightly fast</td><td>Simplest first. Cloning and variants later, maybe never.</td></tr>
+              <tr><td>Daemon lifecycle</td><td>Spawn-on-first-hook, <span class="num">10</span> min idle exit</td><td><span class="num">16GB</span> machine running Codex + Claude + browser. No forever-resident model.</td></tr>
+              <tr><td>Voice input</td><td>Out of scope</td><td>Hex already does local Parakeet STT.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="risks">
+        <div class="section-head"><span class="idx">09</span><h2>Risks And Kill Criteria</h2><p>Pivot, don't polish.</p></div>
+        <div class="grid cols-2">
+          <div class="card">
+            <table>
+              <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+              <tbody>
+                <tr><td><code>last_assistant_message</code> present but unpopulated at runtime</td><td>Keys confirmed in both binaries via strings scan; Phase 0 dump proves they carry data. Fallback: parse <code>transcript_path</code>.</td></tr>
+                <tr><td>Pocket TTS fails the ear test</td><td>Next candidate. Kokoro's extra RAM and deps are acceptable since the daemon idle-exits.</td></tr>
+                <tr><td>First utterance after idle exit</td><td>Model reload means the first response after <span class="num">10</span> min quiet will miss the <span class="num">1s</span> target. Accepted tradeoff, not a bug.</td></tr>
+                <tr><td>DeepSeek down or slow</td><td>Speak the first sentence instead. Never wait, never error.</td></tr>
+                <tr><td>RAM pressure in practice</td><td>Drop to Supertonic-3 int8, smallest footprint of the three.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card">
+            <table>
+              <thead><tr><th>Kill Criteria</th><th>Action</th></tr></thead>
+              <tbody>
+                <tr><td>No candidate passes &lt;<span class="num">1s</span> warm</td><td>macOS <code>say</code> as stopgap, revisit engines later.</td></tr>
+                <tr><td>Speech feels distracting</td><td>Speak only condensed summaries and blocked states.</td></tr>
+                <tr><td>Hook ever slows a turn</td><td>Fix immediately or disable. The agent is sacred.</td></tr>
+                <tr><td>Setup gets heavy</td><td>Cut back to daemon + hook, two files, nothing else.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="prompt">
+        <div class="section-head"><span class="idx">10</span><h2>Codex Prompt</h2><p>Paste this. It restates everything above as one instruction block.</p></div>
+        <div class="code">
+          <header><span>final prompt</span><button class="btn" data-copy="#codex-prompt">Copy</button></header>
+          <pre id="codex-prompt">Build a local voice layer for my coding agents (Codex CLI 0.142.5 and Claude Code
+2.1.201). Repo: this folder (let-there-be-voice). Python 3.12 via uv. macOS on
+Apple M3, 16GB RAM. This packet is v3, already amended by your own review of
+2026-07-05: condense lives in the daemon, hook is a dumb forwarder, bench order
+is Pocket / Supertonic / Kokoro.
+
+Do NOT build a PTY wrapper or parse terminal output. Both CLIs expose the final
+response via hooks: the Stop event delivers JSON on stdin with a
+last_assistant_message field (keys confirmed present in both binaries via
+strings scan). That is the only input source.
+
+PHASE 0 - VERIFY (quick sanity, before real code):
+- Dump one real Stop payload from each CLI (temp hook appending stdin to
+  /tmp/hookdump.json, one real turn each) to confirm last_assistant_message is
+  POPULATED at runtime, not just present as a key. Fallback if empty: parse
+  transcript_path for the last assistant entry.
+- Confirm the DeepSeek token is readable at runtime from
+  ~/.claude/settings.deepseek.json (ANTHROPIC_AUTH_TOKEN field). Never store or
+  commit it anywhere in this repo.
+- Remove the temporary dump hooks when done. Commit nothing from this phase.
+
+PHASE 1 - TTS BENCH (hard gate):
+Bench candidates in this order: Pocket TTS (kyutai-labs/pocket-tts),
+Supertonic-3 int8 via sherpa-onnx, Kokoro-82M via mlx-audio. Measure warm
+time-to-first-audio on a ~15 word sentence and resident RAM. Pick the first
+candidate that passes: warm first-audio &lt; 1s and RAM &lt; 1GB. Do NOT pause for
+my input: pick by the numbers, save one sample WAV per candidate to bench/ so
+I can ear-test later, and make the chosen engine a single swappable constant
+in daemon.py so I can flip it without surgery. Stock voice, calm, slightly
+fast. No cloning, no voice options, no Piper (macOS say is the stopgap if all
+three fail).
+
+PHASE 2 - DAEMON:
+daemon.py, localhost-only HTTP server on port 7333. The daemon owns ALL logic:
+- POST /speak {event, text, ts}, POST /stop, GET /health.
+- Startup is bind-winner: if the port is already bound, exit quietly. Both CLIs
+  may auto-start it simultaneously; first bind wins, loser's POST still lands.
+- Text policy, async after accepting the request: strip markdown, drop code
+  fences, never speak paths/URLs/code verbatim. Over ~350 chars: condense to
+  ONE natural spoken sentence via DeepSeek, model deepseek-v4-flash,
+  Anthropic-compatible endpoint https://api.deepseek.com/anthropic, token read
+  at runtime from ~/.claude/settings.deepseek.json. API fails: speak the first
+  sentence instead. Never block /speak's HTTP response on any of this.
+- Loads the TTS model lazily on first /speak, exits after 10 min idle. First
+  utterance after an idle exit may miss the 1s target: accepted, not a bug.
+- Queue: one active utterance + one pending slot, newest pending wins. Every
+  utterance gets a monotonic generation ID; /stop bumps the generation and a
+  stale /speak result must never play after a newer /stop.
+- Playback via afplay on a temp WAV; /stop kills the whole afplay process
+  group, not just the parent.
+
+PHASE 3 - HOOK SCRIPT:
+hook.py, one script shared by both agents, a dumb forwarder and nothing more:
+- Read stdin JSON. Stop event: take last_assistant_message, empty -&gt; exit 0,
+  else POST it raw to the daemon. UserPromptSubmit event: POST /stop.
+- Auto-start the daemon if it is not running (spawn detached, don't wait).
+- No cleanup, no condensing, no network beyond localhost. Stdlib only.
+- It will be invoked as .venv/bin/python hook.py by absolute path (warm uv run
+  measured 40-90ms on this machine, too close to the budget). Fire-and-forget,
+  exit fast.
+
+PHASE 4 - WIRE AND VERIFY:
+Register Stop + UserPromptSubmit hooks for Claude Code in ~/.claude/settings.json
+first, using the absolute .venv/bin/python command (no ~, no uv run), verify
+end-to-end with a real turn, then Codex via [[hooks.Stop]] and
+[[hooks.UserPromptSubmit]] in ~/.codex/config.toml, verify the same way.
+
+INVARIANTS, never break these:
+- Hooks must never block or slow the agent turn: exit within ~100ms, all
+  cleanup, condensing, synthesis, and playback happens async in the daemon.
+- Silence over noise: any failure (daemon down, API error, malformed payload)
+  means no sound and exit 0. Never leak errors into the agent session.
+- Never speak code, diffs, stack traces, or raw file paths.
+- New user input interrupts current speech instantly; stale speech never
+  resurrects after an interrupt.
+- Everything runs local except the single DeepSeek condense call, and only the
+  daemon ever touches the network or the token.
+- Keep it small: no framework, no packaging, no config UI, no tests beyond the
+  bench script. A handful of files. Personal tool, not a product.
+
+One commit per phase, plain commit messages.</pre>
+        </div>
+      </section>
+
+      <div class="note">
+        Mantra: verify the payload, bench the voice, then two small files and two config pastes. Everything else is ornament.
+      </div>
+
+      <p class="footer">let-there-be-voice · build packet v3 · 2026-07-05 · amended per Codex critical review · single self-contained file, no external assets</p>
+    </main>
+  </div>
+
+  <script>
+    const copyText = async (text) => {
+      try {
+        await navigator.clipboard.writeText(text.trim());
+      } catch {
+        const area = document.createElement("textarea");
+        area.value = text.trim();
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        area.remove();
+      }
+    };
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const node = document.querySelector(button.dataset.copy);
+        if (!node) return;
+        await copyText(node.textContent);
+        const old = button.textContent;
+        button.textContent = "Copied";
+        setTimeout(() => { button.textContent = old; }, 900);
+      });
+    });
+  </script>
+</body>
+</html>
