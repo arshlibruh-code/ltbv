@@ -75,7 +75,7 @@ def main() -> int:
     ensure_daemon()
 
     if event == "UserPromptSubmit":
-        request("/stop", {}, 0.08)
+        request("/stop", {"cwd": payload.get("cwd")}, 0.08)
         return 0
 
     if event != "Stop":

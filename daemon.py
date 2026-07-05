@@ -36,6 +36,8 @@ pending = None
 worker_running = False
 generation = 0
 active_player = None
+active_cwd = None
+working_cwd = None
 last_activity = time.monotonic()
 recent_projects = {}
 prefix_counter = 0
@@ -280,9 +282,7 @@ def synthesize(text: str, gen: int) -> Path | None:
 
 
 def kill_player() -> None:
-    global active_player
-    player = active_player
-    active_player = None
+    player = take_active_player()
     if player and player.poll() is None:
         try:
             os.killpg(player.pid, signal.SIGTERM)
@@ -290,12 +290,21 @@ def kill_player() -> None:
             pass
 
 
-def play(path: Path, gen: int) -> None:
-    global active_player
+def take_active_player():
+    global active_player, active_cwd
+    player = active_player
+    active_player = None
+    active_cwd = None
+    return player
+
+
+def play(path: Path, gen: int, cwd: str | None) -> None:
+    global active_player, active_cwd
     with state_lock:
         if gen != generation:
             return
         active_player = subprocess.Popen(["afplay", str(path)], start_new_session=True)
+        active_cwd = cwd
         player = active_player
     try:
         player.wait()
@@ -303,6 +312,7 @@ def play(path: Path, gen: int) -> None:
         with state_lock:
             if active_player is player:
                 active_player = None
+                active_cwd = None
         try:
             path.unlink()
         except OSError:
@@ -310,7 +320,7 @@ def play(path: Path, gen: int) -> None:
 
 
 def worker() -> None:
-    global pending, worker_running
+    global pending, worker_running, working_cwd
     while True:
         with state_lock:
             job = pending
@@ -319,26 +329,44 @@ def worker() -> None:
                 worker_running = False
                 return
         gen, raw, cwd = job
+        with state_lock:
+            working_cwd = cwd
         text, meta = prepare_speech(raw)
         if not text:
             append_log("skip_empty", cwd=cwd, **meta)
+            with state_lock:
+                if working_cwd == cwd:
+                    working_cwd = None
             continue
         project = project_name(cwd)
         prefix, prefixed = prefix_for_project(project)
         if prefixed:
             text = prefix + text
-        append_log(
-            "speak",
-            cwd=cwd,
-            project=project,
-            prefixed=prefixed,
-            prefix=prefix.strip(),
-            spoken_chars=len(text),
-            **meta,
-        )
+        with state_lock:
+            stale = gen != generation
+        if stale:
+            with state_lock:
+                if working_cwd == cwd:
+                    working_cwd = None
+            append_log(
+                "speak_stale", cwd=cwd, generation=gen, current_generation=generation
+            )
+            continue
         wav_path = synthesize(text, gen)
+        with state_lock:
+            if working_cwd == cwd:
+                working_cwd = None
         if wav_path is not None:
-            play(wav_path, gen)
+            append_log(
+                "speak",
+                cwd=cwd,
+                project=project,
+                prefixed=prefixed,
+                prefix=prefix.strip(),
+                spoken_chars=len(text),
+                **meta,
+            )
+            play(wav_path, gen, cwd)
 
 
 def enqueue_speak(raw: str, cwd: str | None = None) -> int:
@@ -353,14 +381,35 @@ def enqueue_speak(raw: str, cwd: str | None = None) -> int:
         return gen
 
 
-def stop_speech() -> int:
-    global generation, pending
+def stop_speech(cwd: str | None = None) -> int:
+    global generation, pending, working_cwd
     with state_lock:
+        pending_cwd = pending[2] if pending else None
+        should_stop = (
+            cwd is None or pending_cwd == cwd or working_cwd == cwd or active_cwd == cwd
+        )
+        if not should_stop:
+            append_log(
+                "stop_ignored",
+                cwd=cwd,
+                active_cwd=active_cwd,
+                pending_cwd=pending_cwd,
+                working_cwd=working_cwd,
+            )
+            return generation
         generation += 1
         gen = generation
         pending = None
-        kill_player()
-        return gen
+        if cwd is None or working_cwd == cwd:
+            working_cwd = None
+        player = take_active_player()
+        append_log("stop", cwd=cwd, generation=gen)
+    if player and player.poll() is None:
+        try:
+            os.killpg(player.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    return gen
 
 
 def idle_watch() -> None:
@@ -388,7 +437,8 @@ class Handler(BaseHTTPRequestHandler):
         bump_activity()
         try:
             if self.path == "/stop":
-                gen = stop_speech()
+                data = read_json(self)
+                gen = stop_speech(data.get("cwd"))
                 json_response(self, 202, {"ok": True, "generation": gen})
                 return
             if self.path == "/speak":
