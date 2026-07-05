@@ -8,28 +8,40 @@ Repo-local notes for Claude and Codex.
 - Hooks auto-start the daemon when needed.
 
 ## Current files
-- `daemon.py`: localhost voice server on `127.0.0.1:7333`.
+- `daemon.py`: localhost voice server on `127.0.0.1:7333`. Owns all behavior.
 - `hook.py`: hook entrypoint. Reads CLI hook JSON, forwards to the daemon, exits fast.
+- `controller.html`: tuning frontend, served by the daemon at `http://127.0.0.1:7333/`.
+- `config.json`: runtime config, written by the controller, untracked. Delete it to reset to defaults.
+- `smoke.sh`: end-to-end confidence suite. Run before committing daemon or hook changes.
+- `voice`: CLI helper. `./voice status|stop|mute|unmute|say "text"`.
 - `bench_tts.py`: Pocket TTS bench script.
 - `build-packet.html`: implementation packet and source of truth.
 - `voice-field-guide.html`: narrative guide for how the system behaves.
 
 ## Current behavior
-- Claude Code and Codex both use `Stop` and `UserPromptSubmit` hooks.
-- `UserPromptSubmit` posts `/stop`.
-- `Stop` posts the final message to `/speak`.
-- The daemon uses Pocket TTS.
-- Long text gets condensed in the daemon.
-- Playback uses `afplay`.
-- The daemon exits after idle time.
+- Hooks in both CLIs: `Stop` speaks the final reply, `UserPromptSubmit` posts a cwd-scoped `/stop`, `Notification` speaks "<project> needs your input".
+- Replies over `max_direct_chars` (default 400) get condensed via DeepSeek; on failure it speaks the first sentence with a short note.
+- Markdown tables are stripped; a mostly-table reply becomes a spoken invite to look.
+- Path, URL, and filename tokens are stripped from sentences; diff and traceback lines are dropped whole.
+- Per-project pending queue: concurrent projects both get spoken, newest per project wins, notifications queue-jump.
+- When 2+ projects spoke within `project_window_s`, replies get rotating "In X / From X" prefixes.
+- Per-agent voices from the Pocket catalog: `voices.claude`, `voices.codex`, `voices.notification` in config.
+- Quiet hours (`quiet_hours` in config) accept speech but keep silent, logged as `quiet_skip`.
+- Empty `last_assistant_message` falls back to parsing `transcript_path`.
+- Playback via `afplay` honoring `rate` and `volume` config. The daemon exits after `idle_exit_s` idle.
+- Errors land in `.voice.log` as `event: "error"`. The log self-caps around 500 lines.
+
+## Endpoints
+- `GET /` controller, `GET /health` (includes `git_rev`), `GET /config`, `GET /voices`, `GET /log/tail?limit=N`.
+- `POST /speak`, `POST /stop`, `POST /config`, `POST /audition {voice}`, `POST /recondense`.
 
 ## Kill switch
-- Create `.voice-disabled` in the repo root to block wake-up and speech.
-- Remove `.voice-disabled` to re-enable the hook.
+- Create `.voice-disabled` in the repo root to block wake-up and speech (`./voice mute`).
+- Remove it to re-enable (`./voice unmute`).
 
 ## Test
-- Check daemon:
-  - `./.venv/bin/python -c 'import urllib.request; print(urllib.request.urlopen("http://127.0.0.1:7333/health", timeout=2).read().decode())'`
+- Full suite: `./smoke.sh` (temporarily lifts the kill switch, restores it after).
+- Quick daemon check: `./voice status`
 - Test hook directly:
   - `printf '%s' '{"hook_event_name":"Stop","last_assistant_message":"voice test"}' | ./.venv/bin/python hook.py`
 - Real Claude test:
@@ -40,5 +52,7 @@ Repo-local notes for Claude and Codex.
 ## Notes
 - Keep changes narrow.
 - Do not reintroduce a PTY wrapper.
-- Do not put logic back into `hook.py` unless absolutely necessary.
-- If something is silent, check the daemon, the hook config, and the kill switch first.
+- Do not put logic back into `hook.py` unless absolutely necessary (agent detection, retry, and Notification text are the sanctioned exceptions).
+- Temperature changes drop the loaded model; it lazily reloads with the new value on the next speak.
+- Voice cloning (drop-a-wav) is dormant until the gated HF weights are set up: accept terms at huggingface.co/kyutai/pocket-tts, then `hf auth login`.
+- If something is silent, check `./voice status`, the kill switch, quiet hours in config.json, and `.voice.log` first.
