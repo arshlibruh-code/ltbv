@@ -13,13 +13,14 @@ import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-
 HOST = "127.0.0.1"
 PORT = 7333
 IDLE_EXIT_S = 600
-MAX_DIRECT_CHARS = 350
+MAX_DIRECT_CHARS = 1000
 ENGINE = "pocket"
 DEEPSEEK_SETTINGS = Path.home() / ".claude" / "settings.deepseek.json"
+DEEPSEEK_FAILED_TEXT = "DeepSeek failed. I could not condense this long reply."
+DEEPSEEK_TIMEOUT_S = 12
 
 
 state_lock = threading.Lock()
@@ -65,7 +66,7 @@ def strip_markdown(text: str) -> str:
         s = line.strip()
         if not s:
             continue
-        if s.startswith(("+++", "---", "@@", "diff ", "Traceback ", "File \"")):
+        if s.startswith(("+++", "---", "@@", "diff ", "Traceback ", 'File "')):
             continue
         if re.search(r"(^|/)[\w.-]+/[\w./-]+", s):
             continue
@@ -94,21 +95,30 @@ def read_deepseek_env() -> dict:
     return data.get("env", {})
 
 
-def condense(text: str) -> str:
+def condense(text: str) -> str | None:
     try:
         env = read_deepseek_env()
         token = env.get("ANTHROPIC_AUTH_TOKEN")
         if not token:
-            return first_sentence(text)
+            return None
         body = {
             "model": "deepseek-v4-flash",
-            "max_tokens": 80,
+            "max_tokens": 1000,
             "messages": [
                 {
+                    "role": "system",
+                    "content": (
+                        "You are the voice output layer for Claude Code, an AI coding assistant. "
+                        "The user hears you, not reads you. "
+                        "Summarize the assistant's reply into 2-3 natural spoken sentences. "
+                        "Be conversational, like telling a friend what just happened. "
+                        "Drop all code, paths, URLs, and formatting."
+                    ),
+                },
+                {
                     "role": "user",
-                    "content": "Rewrite this as one natural spoken sentence under 32 words. No code, paths, URLs, bullets, or markdown.\n\n"
-                    + text,
-                }
+                    "content": text,
+                },
             ],
         }
         req = urllib.request.Request(
@@ -121,14 +131,15 @@ def condense(text: str) -> str:
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=4) as resp:
+        with urllib.request.urlopen(req, timeout=DEEPSEEK_TIMEOUT_S) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         content = data.get("content") or []
-        if content and isinstance(content[0], dict):
-            return strip_markdown(content[0].get("text", "")) or first_sentence(text)
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                return strip_markdown(block.get("text", "")) or None
     except Exception:
-        return first_sentence(text)
-    return first_sentence(text)
+        return None
+    return None
 
 
 def prepare_text(raw: str) -> str:
@@ -136,8 +147,11 @@ def prepare_text(raw: str) -> str:
     if not text:
         return ""
     if len(text) > MAX_DIRECT_CHARS:
-        text = condense(text)
-    return strip_markdown(text)
+        condensed = condense(text)
+        if condensed is None:
+            return DEEPSEEK_FAILED_TEXT
+        return strip_markdown(condensed)
+    return text
 
 
 def load_pocket():
@@ -158,7 +172,9 @@ def synthesize(text: str, gen: int) -> Path | None:
         return None
     model, voice_state = load_pocket()
     chunks = []
-    for chunk in model.generate_audio_stream(model_state=voice_state, text_to_generate=text):
+    for chunk in model.generate_audio_stream(
+        model_state=voice_state, text_to_generate=text
+    ):
         with state_lock:
             if gen != generation:
                 return None
