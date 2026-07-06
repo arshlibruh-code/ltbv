@@ -296,7 +296,7 @@
             <tbody>
               <tr><td>TTS engine</td><td>Pocket TTS default, Kokoro-82M optional</td><td>Engines sit behind a lazy <code>load / voices / synth</code> registry. Pocket remains the live default. Kokoro exposes <span class="num">54</span> voices and joins the controller shootout. Warm bench: Pocket RTF <span class="num">0.160</span>, Kokoro RTF <span class="num">0.096</span>.</td></tr>
               <tr><td>Length limit</td><td>None from the engine</td><td>Generation is chunk-streamed, so time scales linearly with text and memory stays flat. Arbitrarily long input works; the <span class="num">400</span>-char condense cap is our taste policy, not a Pocket limit.</td></tr>
-              <tr><td>Condense</td><td>DeepSeek <code>deepseek-v4-flash</code></td><td>The one network call, and only for replies over the threshold. Token from <code>settings.deepseek.json</code>, daemon-side only.</td></tr>
+              <tr><td>Condense</td><td>DeepSeek <code>deepseek-v4-flash</code></td><td>The one network call. Long prose goes after cleanup; table replies send the raw full response so the model can summarize the table instead of losing it. Token from <code>settings.deepseek.json</code>, daemon-side only.</td></tr>
               <tr><td>Playback</td><td>ffplay (<code>atempo</code>) or afplay</td><td>ffplay preferred for pitch-preserving rate; afplay fallback. Optional Spotify-only ducking can fade Spotify down during actual TTS playback, then restore the exact saved volume when playback finishes or is stopped.</td></tr>
               <tr><td>Runtime</td><td>Python <span class="num">3.11</span> stdlib + PyTorch</td><td>Daemon is stdlib-only (HTTP, threads, queue, SSE). PyTorch rides in under Pocket. No web framework.</td></tr>
               <tr><td>Runs local</td><td>Everything except condense</td><td>Synthesis, playback, cloning, config, the controller: all on-device. Only the DeepSeek call leaves the machine.</td></tr>
@@ -313,7 +313,7 @@
             <tbody>
               <tr><td>Product</td><td>Speak the final response of every Codex and Claude Code turn, automatically, via hooks. No wrapper command, agents run as normal.</td><td><span class="tag">Shipped</span></td></tr>
               <tr><td>User flow</td><td>Zero. Hooks fire on their own. New input kills speech instantly, scoped to the project you typed in.</td><td><span class="tag">Shipped</span></td></tr>
-              <tr><td>Privacy</td><td>All synthesis and audio local. One asterisk: long responses go to DeepSeek for condensing.</td><td><span class="tag yellow">1 asterisk</span></td></tr>
+              <tr><td>Privacy</td><td>All synthesis and audio local. One asterisk: long responses and table replies go to DeepSeek for condensing.</td><td><span class="tag yellow">1 asterisk</span></td></tr>
               <tr><td>Latency</td><td>Warm first-audio under <span class="num">1s</span>. Hook exits within <span class="num">~100ms</span>. Measured: <span class="num">0.05s</span> warm first-audio on Pocket.</td><td><span class="tag">Passed</span></td></tr>
               <tr><td>Voice in</td><td>Not built. Hex (<code>com.kitlangton.Hex</code>, Parakeet STT) already covers it. This tool is one-way: agent to speaker.</td><td><span class="tag red">Non-goal</span></td></tr>
               <tr><td>Non-goals</td><td>No PTY wrapper, no UI, no voice cloning, no packaging, no framework, no support for agents I don't use.</td><td><span class="tag red">Avoid</span></td></tr>
@@ -328,7 +328,7 @@
           <div class="node"><b>Agent CLI</b><span>Codex <span class="num">0.142.5</span> or Claude Code. Untouched, unwrapped.</span></div>
           <div class="node"><b>Stop hook</b><span>Fires on turn end. JSON on stdin carries <code>last_assistant_message</code>.</span></div>
           <div class="node"><b>hook.py</b><span>Dumb forwarder: POST <code>{event, text, ts}</code> to daemon, auto-start it if down, exit. Nothing else.</span></div>
-          <div class="node"><b>daemon.py</b><span>Port <span class="num">7333</span>. <code>/speak</code>, <code>/stop</code>, <code>/health</code>. Table strip + cleanup + DeepSeek condense + synthesis, all async. Project prefixes, <code>.voice.log</code>, lazy load, <span class="num">10</span> min idle exit.</span></div>
+          <div class="node"><b>daemon.py</b><span>Port <span class="num">7333</span>. <code>/speak</code>, <code>/stop</code>, <code>/health</code>. Table-aware DeepSeek condense + cleanup + synthesis, all async. Project prefixes, <code>.voice.log</code>, lazy load, <span class="num">10</span> min idle exit.</span></div>
           <div class="node"><b>Playback</b><span>One active + one pending, newest wins, generation IDs gate stale requests. <code>UserPromptSubmit</code> hits <code>/stop</code>, scoped to the typing project's cwd.</span></div>
         </div>
       </section>
@@ -337,8 +337,8 @@
         <div class="section-head"><span class="idx">04</span><h2>Speech Policy</h2><p>Where all the taste lives.</p></div>
         <div class="card">
           <div class="filter-row"><b>Speak</b><span>Final assistant prose under <span class="num">400</span> chars (live, tunable from the controller), after markdown strip.</span><span class="tag">Yes</span></div>
-          <div class="filter-row"><b>Never speak</b><span>Code, diffs, stack traces, raw file paths, URLs verbatim. Markdown tables stripped before anything else; a mostly-table reply becomes a spoken invite to look at it.</span><span class="tag red">No</span></div>
-          <div class="filter-row"><b>Condense</b><span>Over the threshold: <span class="num">2-3</span> natural spoken sentences via <code>deepseek-v4-flash</code>, called by the daemon, never the hook. API fails: speak the first sentence plus a short note so the content survives.</span><span class="tag yellow">DeepSeek</span></div>
+          <div class="filter-row"><b>Never speak</b><span>Code, diffs, stack traces, raw file paths, URLs verbatim. Markdown tables are never read row by row; the raw reply goes to DeepSeek for a conversational table summary.</span><span class="tag red">No</span></div>
+          <div class="filter-row"><b>Condense</b><span>Over the threshold, or whenever a table appears: <span class="num">2-3</span> natural spoken sentences via <code>deepseek-v4-flash</code>, called by the daemon, never the hook. API fails: speak the first sentence or invite the user to inspect the table.</span><span class="tag yellow">DeepSeek</span></div>
           <div class="filter-row"><b>Interrupt</b><span><code>UserPromptSubmit</code> in either CLI posts <code>/stop</code> with its cwd. Only the typing project goes quiet; another project mid-sentence keeps talking.</span><span class="tag blue">Required</span></div>
           <div class="filter-row"><b>Queue</b><span>Per-project pending map, newest per project wins, notifications queue-jump. Concurrent projects no longer swallow each other.</span><span class="tag blue">Simple</span></div>
           <div class="filter-row"><b>Prefix</b><span>When more than one project has spoken inside <span class="num">10</span> min, replies get a rotating spoken prefix: In X / From X / Update from X. Solo work stays unprefixed.</span><span class="tag">Live</span></div>
@@ -356,7 +356,7 @@
               <tr><td>Never speak code</td><td>No code, diffs, stack traces, or raw paths, under any condition.</td></tr>
               <tr><td>Instant interrupt</td><td>New user input kills current speech immediately, scoped to the project it came from.</td></tr>
               <tr><td>Kill switch</td><td><code>.voice-disabled</code> in the repo root blocks wake-up and speech before anything else runs. Delete it to re-enable, no restart.</td></tr>
-              <tr><td>Local, one asterisk</td><td>Everything runs on-device except the single DeepSeek condense call.</td></tr>
+              <tr><td>Local, one asterisk</td><td>Everything runs on-device except DeepSeek condense calls for long prose and table replies.</td></tr>
               <tr><td>Stay small</td><td>No framework, no packaging, no tests beyond the bench script. A handful of files. Personal tool, not a product. Amended 2026-07-06: "no config UI" fell deliberately; <code>controller.html</code> is the sanctioned tuning surface, served by the daemon. It is a remote, not a brain: all behavior stays in <code>daemon.py</code>.</td></tr>
               <tr><td>Secrets</td><td>DeepSeek token read at runtime from <code>~/.claude/settings.deepseek.json</code>. Never stored or committed in this repo.</td></tr>
             </tbody>
@@ -520,7 +520,7 @@ command = "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/pyth
               <tr><td>TTS engine</td><td>Pocket default, Kokoro optional</td><td>Kokoro shootout shipped. Warm result on the same sentence: Pocket RTF <span class="num">0.160</span>, Kokoro RTF <span class="num">0.096</span>. Pocket remains default until a winner is picked.</td></tr>
               <tr><td>Kill switch</td><td><code>.voice-disabled</code> file in repo root</td><td>Zero config, greppable, no daemon restart. Hook checks it before anything else.</td></tr>
               <tr><td>Stop scope</td><td>cwd-scoped <code>/stop</code> (2026-07-06)</td><td>Two projects run concurrently in practice; typing in one must not silence the other. <code>working_cwd</code> covers the condense/synthesis window.</td></tr>
-              <tr><td>Table replies</td><td>Strip tables, speak an invite</td><td>Reading rows aloud is noise. "I made a table, take a look" preserves the signal.</td></tr>
+              <tr><td>Table replies</td><td>Raw reply to DeepSeek, speak the summary</td><td>Reading rows aloud is noise, but stripping tables before the model loses context. If DeepSeek is unavailable, fall back to the spoken invite.</td></tr>
               <tr><td>Condense failure</td><td>Audible failure line, superseded: first sentence + note (Phase 5)</td><td>Audible beat silent, but losing the content entirely was worse than a degraded summary.</td></tr>
               <tr><td>Project prefix</td><td>Rotating In X / From X / Update from X when <span class="num">2+</span> projects inside <span class="num">10</span> min</td><td>The ear needs a namespace when two agents talk; rotation keeps it from sounding robotic.</td></tr>
               <tr><td>Config UI</td><td><code>controller.html</code>, Phase 6 (2026-07-06)</td><td>The taste knobs turned out to be the product. Amends the 2026-07-05 "no config UI" invariant deliberately: the controller tunes, the daemon decides.</td></tr>

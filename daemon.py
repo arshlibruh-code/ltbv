@@ -49,8 +49,8 @@ DEFAULT_CONDENSE_PROMPT = (
     "The user hears this out loud, so sound like a calm coding partner, not a report. "
     "Say what changed, what matters, or what the user should notice next. "
     "Use 2-3 short natural sentences. "
-    "Do not read tables, code, diffs, file paths, URLs, markdown, bullets, or headings. "
-    "If the reply mostly contains a table, say that a table was made and invite the user to inspect it."
+    "If the reply contains a table, summarize the table's meaning conversationally instead of reading cells row by row. "
+    "Do not read code, diffs, file paths, URLs, markdown, bullets, or headings."
 )
 
 CATALOG_VOICES = (
@@ -571,18 +571,29 @@ def condense(text: str) -> str | None:
 def prepare_speech(raw: str) -> tuple[str, dict]:
     tableless, meta = strip_markdown_tables(raw or "")
     text = strip_markdown(tableless)
-    if not text:
-        if meta["table_skipped"]:
-            meta["table_fallback"] = True
-            return TABLE_FALLBACK_TEXT, meta
-        return "", meta
     meta["_cleaned"] = text
+    if meta["table_skipped"]:
+        condensed = condense(raw)
+        if condensed is not None:
+            meta["condense"] = "ok"
+            meta["condense_source"] = "raw_table"
+            return strip_markdown(condensed), meta
+        meta["condense"] = "failed"
+        meta["condense_source"] = "raw_table"
+        if text:
+            return f"Summary failed, first line: {first_sentence(text)}", meta
+        meta["table_fallback"] = True
+        return TABLE_FALLBACK_TEXT, meta
+    if not text:
+        return "", meta
     if len(text) > config["max_direct_chars"]:
         condensed = condense(text)
         if condensed is None:
             meta["condense"] = "failed"
+            meta["condense_source"] = "cleaned"
             return f"Summary failed, first line: {first_sentence(text)}", meta
         meta["condense"] = "ok"
+        meta["condense_source"] = "cleaned"
         return strip_markdown(condensed), meta
     meta["condense"] = "not_needed"
     return text, meta
@@ -1450,11 +1461,16 @@ class Handler(BaseHTTPRequestHandler):
                 if not last_stages or not last_stages.get("raw"):
                     json_response(self, 200, {"ok": False, "error": "no_last_reply"})
                     return
-                tableless, _ = strip_markdown_tables(last_stages["raw"])
+                tableless, meta = strip_markdown_tables(last_stages["raw"])
                 cleaned = strip_markdown(tableless)
-                out = condense(cleaned)
+                source = last_stages["raw"] if meta["table_skipped"] else cleaned
+                out = condense(source)
                 if out is None:
-                    out = f"Summary failed, first line: {first_sentence(cleaned)}"
+                    if meta["table_skipped"] and not cleaned:
+                        out = TABLE_FALLBACK_TEXT
+                    else:
+                        out = f"Summary failed, first line: {first_sentence(cleaned)}"
+                out = strip_markdown(out)
                 enqueue_speak(out, None, kind="audition", prepared=True)
                 json_response(self, 200, {"ok": True, "text": out})
                 return

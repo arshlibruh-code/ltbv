@@ -21,7 +21,7 @@ Repo-local notes for Claude and Codex.
 ## Current behavior
 - Hooks in both CLIs: `Stop` speaks the final reply, `UserPromptSubmit` posts a cwd-scoped `/stop`, `Notification` speaks "<project> needs your input".
 - Replies over `max_direct_chars` (default 400) get condensed via DeepSeek; on failure it speaks the first sentence with a short note.
-- Markdown tables are stripped; a mostly-table reply becomes a spoken invite to look.
+- Markdown-table replies send the raw full response to DeepSeek first, so the voice gets a conversational table summary instead of row-by-row noise. If DeepSeek fails, a mostly-table reply becomes a spoken invite to look.
 - Path, URL, and filename tokens are stripped from sentences; diff and traceback lines are dropped whole.
 - Per-project pending queue: concurrent projects both get spoken, newest per project wins, notifications queue-jump.
 - When 2+ projects spoke within `project_window_s`, replies get rotating "In X / From X" prefixes.
