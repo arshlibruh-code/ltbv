@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
+import array
 import base64
 import binascii
+import importlib.util
 import json
 import os
 import queue
 import re
+import resource
 import shutil
 import signal
 import subprocess
@@ -55,6 +58,24 @@ CATALOG_VOICES = (
     "javert", "jean", "juergen", "lola", "marius", "mary", "michael", "paul",
     "peter_yearsley", "rafael", "stuart_bell", "vera",
 )
+
+KOKORO_VOICES = (
+    "af_alloy", "af_aoede", "af_bella", "af_heart", "af_jessica", "af_kore",
+    "af_nicole", "af_nova", "af_river", "af_sarah", "af_sky", "am_adam",
+    "am_echo", "am_eric", "am_fenrir", "am_liam", "am_michael", "am_onyx",
+    "am_puck", "am_santa", "bf_alice", "bf_emma", "bf_isabella", "bf_lily",
+    "bm_daniel", "bm_fable", "bm_george", "bm_lewis", "ef_dora", "em_alex",
+    "em_santa", "ff_siwis", "hf_alpha", "hf_beta", "hm_omega", "hm_psi",
+    "if_sara", "im_nicola", "jf_alpha", "jf_gongitsune", "jf_nezumi",
+    "jf_tebukuro", "jm_kumo", "pf_dora", "pm_alex", "pm_santa",
+    "zf_xiaobei", "zf_xiaoni", "zf_xiaoxiao", "zf_xiaoyi", "zm_yunjian",
+    "zm_yunxi", "zm_yunxia", "zm_yunyang",
+)
+
+
+def torch_to_pcm(audio) -> bytes:
+    data = audio.detach().cpu().clamp(-1, 1).numpy()
+    return (data * 32767).astype("<i2").tobytes()
 
 
 class TTSEngine:
@@ -120,9 +141,10 @@ class PocketEngine(TTSEngine):
     def synth(self, text: str, voice: str):
         model = self.load()
         voice_state = self.voice_state_for(voice)
-        yield from model.generate_audio_stream(
+        for chunk in model.generate_audio_stream(
             model_state=voice_state, text_to_generate=text
-        )
+        ):
+            yield torch_to_pcm(chunk)
 
     def reset(self) -> None:
         self.model = None
@@ -132,7 +154,49 @@ class PocketEngine(TTSEngine):
         self.voice_states.pop(name, None)
 
 
-ENGINES = {"pocket": PocketEngine()}
+class KokoroEngine(TTSEngine):
+    name = "kokoro"
+    sample_rate = SAMPLE_RATE
+    install_command = "uv add 'kokoro>=0.9.4'"
+
+    def __init__(self):
+        self.pipelines = {}
+
+    def installed(self) -> bool:
+        return importlib.util.find_spec("kokoro") is not None
+
+    def loaded(self) -> bool:
+        return bool(self.pipelines)
+
+    def load(self, lang_code: str = "a"):
+        if not self.installed():
+            raise RuntimeError(f"kokoro is not installed. Run: {self.install_command}")
+        if lang_code not in self.pipelines:
+            os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+            from kokoro import KPipeline
+            import torch
+
+            device = "cpu"
+            if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+                device = "mps"
+            self.pipelines[lang_code] = KPipeline(
+                lang_code=lang_code, repo_id="hexgrad/Kokoro-82M", device=device
+            )
+        return self.pipelines[lang_code]
+
+    def voices(self) -> list:
+        return list(KOKORO_VOICES)
+
+    def synth(self, text: str, voice: str):
+        if voice not in KOKORO_VOICES:
+            voice = "af_heart"
+        pipeline = self.load(voice[0])
+        for result in pipeline(text, voice=voice, speed=1, split_pattern=r"\n+"):
+            if result.audio is not None:
+                yield torch_to_pcm(result.audio)
+
+
+ENGINES = {"pocket": PocketEngine(), "kokoro": KokoroEngine()}
 
 
 def custom_voices() -> list:
@@ -203,8 +267,16 @@ def active_engine_name() -> str:
     return config.get("engine", "pocket")
 
 
+def engine_by_name(name: str | None = None) -> TTSEngine:
+    return ENGINES[name or active_engine_name()]
+
+
 def active_engine() -> TTSEngine:
-    return ENGINES[active_engine_name()]
+    return engine_by_name()
+
+
+def rss_mb() -> float:
+    return round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024 / 1024, 1)
 
 
 def now() -> float:
@@ -304,7 +376,7 @@ def validate_field(key: str, value):
         return merged
     if kind == "engine":
         value = str(value).strip()
-        if value not in ENGINES:
+        if value not in ENGINES or not ENGINES[value].installed():
             raise ValueError(key)
         return value
     raise ValueError(key)
@@ -566,13 +638,17 @@ def prefix_for_project(project: str | None) -> tuple[str, bool]:
 
 
 def voice_for_job(job: dict) -> str:
+    voices_for_engine = engine_by_name(job.get("engine")).voices()
     if job.get("voice"):
-        return job["voice"]
+        voice = job["voice"]
+        return voice if voice in voices_for_engine else voices_for_engine[0]
     voices = config["voices"]
     if job["kind"] == "notification":
-        return voices["notification"]
+        voice = voices["notification"]
+        return voice if voice in voices_for_engine else voices_for_engine[0]
     agent = job.get("agent") or "claude"
-    return voices.get(agent, voices["claude"])
+    voice = voices.get(agent, voices["claude"])
+    return voice if voice in voices_for_engine else voices_for_engine[0]
 
 
 def generation_for(key) -> int:
@@ -633,21 +709,39 @@ def ring_put(clip_id: str, path: Path) -> None:
             pass
 
 
-def write_wav(path: Path, pcm_frames: list) -> None:
+def write_wav(path: Path, pcm_frames: list, sample_rate: int | None = None) -> None:
     with wave.open(str(path), "wb") as wav:
         wav.setnchannels(1)
         wav.setsampwidth(2)
-        wav.setframerate(active_engine().sample_rate)
+        wav.setframerate(sample_rate or active_engine().sample_rate)
         for pcm in pcm_frames:
             wav.writeframes(pcm)
 
 
-def speak(text: str, gen: int, key, cwd: str | None, voice: str, kind: str) -> str | None:
+def pcm_peak(pcm: bytes) -> float:
+    if not pcm:
+        return 0.0
+    samples = array.array("h")
+    samples.frombytes(pcm)
+    if samples.itemsize != 2:
+        return 0.0
+    return max(abs(s) for s in samples) / 32767
+
+
+def speak(
+    text: str,
+    gen: int,
+    key,
+    cwd: str | None,
+    voice: str,
+    kind: str,
+    engine_name: str | None = None,
+) -> str | None:
     """Synthesize fully, then play the finished clip the moment it is ready.
     Ships a waveform + duration for the Stage and keeps the clip for replay.
     Returns a clip id, or None if the job went stale or synthesis failed."""
     global active_player, active_cwd, last_spoken_ts, now_speaking
-    engine = active_engine()
+    engine = engine_by_name(engine_name)
 
     pcm_frames = []
     peaks = []
@@ -657,10 +751,9 @@ def speak(text: str, gen: int, key, cwd: str | None, voice: str, kind: str) -> s
             with state_lock:
                 if is_stale(key, gen):
                     return None
-            data = chunk.detach().cpu().clamp(-1, 1).numpy()
-            peaks.append(float(abs(data).max()))
-            total_samples += len(data)
-            pcm_frames.append((data * 32767).astype("<i2").tobytes())
+            peaks.append(pcm_peak(chunk))
+            total_samples += len(chunk) // 2
+            pcm_frames.append(chunk)
     except Exception:
         log_error("synthesize")
         return None
@@ -669,7 +762,7 @@ def speak(text: str, gen: int, key, cwd: str | None, voice: str, kind: str) -> s
     clip_path = RING_DIR / f"{clip_id}.wav"
     try:
         RING_DIR.mkdir(exist_ok=True)
-        write_wav(clip_path, pcm_frames)
+        write_wav(clip_path, pcm_frames, engine.sample_rate)
         ring_put(clip_id, clip_path)
     except Exception:
         log_error("ring_write")
@@ -686,7 +779,7 @@ def speak(text: str, gen: int, key, cwd: str | None, voice: str, kind: str) -> s
         active_cwd = cwd
         last_spoken_ts = time.time()
         now_speaking = {
-            "text": text[:240], "voice": voice, "kind": kind,
+            "text": text[:240], "voice": voice, "kind": kind, "engine": engine.name,
             "project": project_name(cwd), "ts": last_spoken_ts,
         }
     publish({"event": "now", "on": True, **now_speaking})
@@ -826,13 +919,14 @@ def process_job(job: dict) -> None:
         )
         return
     voice = voice_for_job(job)
-    clip_id = speak(text, gen, key, cwd, voice, kind)
+    clip_id = speak(text, gen, key, cwd, voice, kind, job.get("engine"))
     if clip_id is not None:
         append_log(
             "speak",
             cwd=cwd,
             project=project_name(cwd),
             kind=kind,
+            engine=job.get("engine") or active_engine_name(),
             voice=voice,
             prefixed=prefixed,
             prefix=prefix.strip(),
@@ -867,6 +961,7 @@ def enqueue_speak(
     kind: str = "reply",
     agent: str | None = None,
     voice: str | None = None,
+    engine: str | None = None,
     prepared: bool = False,
 ) -> int:
     global worker_running, generation
@@ -882,6 +977,7 @@ def enqueue_speak(
             "kind": kind,
             "agent": agent,
             "voice": voice,
+            "engine": engine,
             "prepared": prepared,
         }
         if not worker_running:
@@ -954,6 +1050,63 @@ def log_tail(limit: int) -> list:
     return entries
 
 
+def engine_status(engine: TTSEngine) -> dict:
+    return {
+        "name": engine.name,
+        "installed": engine.installed(),
+        "loaded": engine.loaded(),
+        "rss_mb": rss_mb(),
+        "install_command": None if engine.installed() else engine.install_command,
+    }
+
+
+def requested_engine(data: dict) -> tuple[str | None, str | None]:
+    name = data.get("engine") or data.get("name")
+    if name is None:
+        return None, None
+    name = str(name)
+    engine = ENGINES.get(name)
+    if not engine:
+        return None, "unknown_engine"
+    if not engine.installed():
+        return None, engine.install_command
+    return name, None
+
+
+def synth_clip(engine_name: str, text: str, voice: str | None = None) -> dict:
+    engine = ENGINES[engine_name]
+    voices = engine.voices()
+    if not voice or voice not in voices:
+        voice = voices[0]
+
+    pcm_frames = []
+    total_samples = 0
+    first_audio_s = None
+    t0 = time.perf_counter()
+    for chunk in engine.synth(text, voice):
+        if first_audio_s is None:
+            first_audio_s = time.perf_counter() - t0
+        total_samples += len(chunk) // 2
+        pcm_frames.append(chunk)
+    synth_s = time.perf_counter() - t0
+    duration_s = total_samples / engine.sample_rate if engine.sample_rate else 0
+    clip_id = f"{engine_name}-{int(time.time() * 1000)}"
+    clip_path = RING_DIR / f"{clip_id}.wav"
+    RING_DIR.mkdir(exist_ok=True)
+    write_wav(clip_path, pcm_frames, engine.sample_rate)
+    ring_put(clip_id, clip_path)
+    return {
+        "engine": engine_name,
+        "voice": voice,
+        "clip_id": clip_id,
+        "rtf": round(synth_s / duration_s, 3) if duration_s else None,
+        "ttfa_s": round(first_audio_s if first_audio_s is not None else synth_s, 3),
+        "synth_s": round(synth_s, 3),
+        "duration_s": round(duration_s, 3),
+        "rss_mb": rss_mb(),
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         return
@@ -1021,6 +1174,17 @@ class Handler(BaseHTTPRequestHandler):
                     self, 200, {"ok": True, "config": config, "catalog": all_voices()}
                 )
                 return
+            if route == "/engines":
+                json_response(
+                    self,
+                    200,
+                    {
+                        "ok": True,
+                        "active": active_engine_name(),
+                        "engines": [engine_status(e) for e in ENGINES.values()],
+                    },
+                )
+                return
             if route == "/voices":
                 json_response(
                     self,
@@ -1029,7 +1193,11 @@ class Handler(BaseHTTPRequestHandler):
                         "ok": True,
                         "voices": all_voices(),
                         "custom": custom_voices(),
-                        "assigned": config["voices"],
+                        "assigned": {
+                            slot: voice if voice in all_voices() else all_voices()[0]
+                            for slot, voice in config["voices"].items()
+                        },
+                        "engine": active_engine_name(),
                         "clone_ready": bool(FFMPEG),
                     },
                 )
@@ -1058,6 +1226,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if self.path == "/speak":
                 data = read_json(self)
+                engine_name, engine_error = requested_engine(data)
+                if engine_error:
+                    json_response(self, 400, {"ok": False, "error": engine_error})
+                    return
                 text = data.get("text") or data.get("last_assistant_message") or ""
                 cwd = data.get("cwd")
                 if not text.strip() and data.get("transcript_path"):
@@ -1068,8 +1240,37 @@ class Handler(BaseHTTPRequestHandler):
                     json_response(self, 202, {"ok": True, "skipped": True})
                     return
                 kind = "notification" if data.get("event") == "Notification" else "reply"
-                gen = enqueue_speak(text, cwd, kind=kind, agent=data.get("agent"))
+                gen = enqueue_speak(
+                    text, cwd, kind=kind, agent=data.get("agent"), engine=engine_name
+                )
                 json_response(self, 202, {"ok": True, "generation": gen})
+                return
+            if self.path == "/engine":
+                data = read_json(self)
+                engine_name, engine_error = requested_engine(data)
+                if not engine_name:
+                    json_response(self, 400, {"ok": False, "error": engine_error})
+                    return
+                applied, errors = apply_config({"engine": engine_name})
+                publish({"event": "config"})
+                json_response(
+                    self, 200, {"ok": not errors, "config": applied, "errors": errors}
+                )
+                return
+            if self.path == "/bench":
+                data = read_json(self)
+                text = str(data.get("text") or AUDITION_TEXT.format(voice="bench")).strip()
+                voice = data.get("voice")
+                results = []
+                for name, engine in ENGINES.items():
+                    if not engine.installed():
+                        continue
+                    try:
+                        results.append(synth_clip(name, text, voice))
+                    except Exception:
+                        log_error(f"bench_{name}")
+                        results.append({"engine": name, "ok": False})
+                json_response(self, 200, {"ok": True, "results": results})
                 return
             if self.path == "/config":
                 data = read_json(self)
@@ -1081,13 +1282,23 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if self.path == "/audition":
                 data = read_json(self)
+                engine_name, engine_error = requested_engine(data)
+                if engine_error:
+                    json_response(self, 400, {"ok": False, "error": engine_error})
+                    return
                 voice = data.get("voice")
-                if voice not in all_voices():
+                voices = engine_by_name(engine_name).voices()
+                if voice not in voices:
                     json_response(self, 400, {"ok": False, "error": "unknown_voice"})
                     return
                 text = data.get("text") or AUDITION_TEXT.format(voice=voice.replace("_", " "))
                 gen = enqueue_speak(
-                    text, None, kind="audition", voice=voice, prepared=True
+                    text,
+                    None,
+                    kind="audition",
+                    voice=voice,
+                    engine=engine_name,
+                    prepared=True,
                 )
                 json_response(self, 202, {"ok": True, "generation": gen})
                 return

@@ -219,6 +219,22 @@
     #recondense-out { margin-top: 8px; display: none; }
     .hint { color: var(--faint); font-size: 10px; }
     kbd { font-family: var(--mono); font-size: 9px; border: 1px solid var(--line); padding: 0 4px; color: var(--muted); }
+    .engine-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 10px; }
+    @media (max-width: 620px) { .engine-grid { grid-template-columns: 1fr; } }
+    .engine-card { border: 1px solid var(--line-soft); background: var(--panel-2); padding: 8px; display: grid; gap: 6px; }
+    .engine-card.active { border-color: var(--blue); }
+    .engine-card b { font-family: var(--mono); font-weight: 400; font-size: 12px; }
+    .engine-card span { color: var(--muted); font-size: 10px; }
+    .engine-card code { color: var(--yellow); font-size: 10px; word-break: break-all; }
+    .bench-row { display: flex; gap: 6px; align-items: stretch; margin-bottom: 8px; }
+    #bench-text { flex: 1; background: var(--ink); border: 1px solid var(--line-soft); color: var(--text); padding: 6px 8px; font-size: 11px; min-height: 32px; }
+    table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10px; }
+    th, td { border-bottom: 1px solid var(--line-soft); padding: 5px 4px; text-align: left; }
+    th { color: var(--faint); font-weight: 400; text-transform: uppercase; letter-spacing: 0.06em; }
+    td { color: var(--muted); }
+    td strong { color: var(--text); font-weight: 400; }
+    .blind { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    #cleanup { margin-top: 8px; display: none; }
   </style>
 </head>
 <body>
@@ -295,6 +311,23 @@
       <div class="col">
 
         <section>
+          <header><h2>TTS Shootout</h2><span id="bench-state">Pocket stays default</span></header>
+          <div class="body">
+            <div class="engine-grid" id="engine-grid"></div>
+            <div class="bench-row">
+              <input id="bench-text" value="Codex finished the task and is ready for your next instruction.">
+              <button class="btn" id="bench-run">compare</button>
+            </div>
+            <table>
+              <thead><tr><th>engine</th><th>voice</th><th>rtf</th><th>ttfa</th><th>synth</th><th>dur</th><th></th><th></th></tr></thead>
+              <tbody id="bench-body"><tr><td colspan="8">no bench run yet</td></tr></tbody>
+            </table>
+            <div class="blind" id="blind"></div>
+            <div class="pane" id="cleanup"></div>
+          </div>
+        </section>
+
+        <section>
           <header><h2>Voice Lab</h2><span>generated live from one reference sample each</span></header>
           <div class="body">
             <div class="assigns">
@@ -369,6 +402,9 @@
     let cfg = null;
     let entries = [];
     let dragThresh = null;
+    let engines = [];
+    let benchResults = [];
+    let blindOrder = [];
 
     // ---------- config save with inline armor errors ----------
     let saveTimer = null;
@@ -403,6 +439,114 @@
         $("h-rev").textContent = h.git_rev || "?";
         $("h-spoke").textContent = h.last_spoken_ts ? new Date(h.last_spoken_ts * 1000).toLocaleTimeString() : "never";
       } catch { $("dot").classList.remove("on"); }
+    }
+
+    // ---------- TTS shootout ----------
+    async function initEngines() {
+      const out = await api("/engines");
+      engines = out.engines || [];
+      renderEngines(out.active);
+    }
+    function renderEngines(active) {
+      const grid = $("engine-grid");
+      grid.innerHTML = "";
+      for (const e of engines) {
+        const card = document.createElement("div");
+        card.className = "engine-card" + (e.name === active ? " active" : "");
+        const status = e.installed ? (e.loaded ? "loaded" : "installed, cold") : "not installed";
+        card.innerHTML = `<b>${e.name}</b><span>${status} · rss ${e.rss_mb} MB</span>`;
+        if (e.install_command) {
+          const c = document.createElement("code");
+          c.textContent = e.install_command;
+          card.appendChild(c);
+        }
+        const b = document.createElement("button");
+        b.className = "btn";
+        b.textContent = e.name === active ? "active" : "set active";
+        b.disabled = !e.installed || e.name === active;
+        b.onclick = async () => {
+          const out = await api("/engine", { name: e.name });
+          if (out.ok) {
+            cfg = out.config;
+            await initEngines();
+            await initVoices();
+            renderScrubs(); renderQuiet(); drawHisto();
+          }
+        };
+        card.appendChild(b);
+        grid.appendChild(card);
+      }
+    }
+    function renderBench() {
+      const body = $("bench-body");
+      body.innerHTML = "";
+      if (!benchResults.length) {
+        body.innerHTML = '<tr><td colspan="8">no bench run yet</td></tr>';
+        return;
+      }
+      for (const r of benchResults) {
+        const tr = document.createElement("tr");
+        if (r.ok === false) {
+          tr.innerHTML = `<td><strong>${r.engine}</strong></td><td colspan="7">bench failed, see .voice.log</td>`;
+          body.appendChild(tr);
+          continue;
+        }
+        tr.innerHTML = `<td><strong>${r.engine}</strong></td><td>${r.voice}</td><td>${r.rtf}</td><td>${r.ttfa_s}s</td><td>${r.synth_s}s</td><td>${r.duration_s}s</td>`;
+        const play = document.createElement("td");
+        const pb = document.createElement("button");
+        pb.className = "btn"; pb.textContent = "play"; pb.onclick = () => api("/replay", { clip: r.clip_id });
+        play.appendChild(pb);
+        const keep = document.createElement("td");
+        const kb = document.createElement("button");
+        kb.className = "btn"; kb.textContent = "keep"; kb.onclick = () => keepEngine(r.engine);
+        keep.appendChild(kb);
+        tr.append(play, keep);
+        body.appendChild(tr);
+      }
+      blindOrder = [...benchResults].filter((r) => r.clip_id).sort(() => Math.random() - 0.5);
+      renderBlind(false);
+    }
+    function renderBlind(reveal) {
+      const host = $("blind");
+      host.innerHTML = "";
+      if (!blindOrder.length) return;
+      blindOrder.forEach((r, i) => {
+        const b = document.createElement("button");
+        b.className = "btn";
+        b.textContent = reveal ? `${String.fromCharCode(65 + i)} · ${r.engine}` : String.fromCharCode(65 + i);
+        b.onclick = () => api("/replay", { clip: r.clip_id });
+        host.appendChild(b);
+      });
+      const rev = document.createElement("button");
+      rev.className = "btn";
+      rev.textContent = reveal ? "hide" : "reveal";
+      rev.onclick = () => renderBlind(!reveal);
+      host.appendChild(rev);
+    }
+    async function runBench() {
+      $("bench-run").disabled = true;
+      $("bench-state").textContent = "running…";
+      const out = await api("/bench", { text: $("bench-text").value.trim() });
+      benchResults = out.results || [];
+      renderBench();
+      await initEngines();
+      $("bench-state").textContent = "daemon-measured RTF";
+      $("bench-run").disabled = false;
+    }
+    async function keepEngine(name) {
+      const out = await api("/engine", { name });
+      if (out.ok) cfg = out.config;
+      const losers = engines.filter((e) => e.name !== name && e.installed).map((e) => e.name);
+      const lines = [`default engine: ${name}`, "", "cleanup candidates:"];
+      for (const loser of losers) {
+        if (loser === "kokoro") lines.push("uv remove kokoro");
+        else if (loser === "pocket") lines.push("uv remove pocket-tts");
+        else lines.push(`# remove ${loser} package and cached model files`);
+      }
+      $("cleanup").style.display = "block";
+      $("cleanup").textContent = lines.join("\n");
+      await initEngines();
+      await initVoices();
     }
 
     // ---------- now speaking strip + stage waveform ----------
@@ -861,6 +1005,7 @@
       $("recondense-out").textContent = out.ok ? out.text : "no long reply seen yet by this daemon";
       $("recondense").disabled = false;
     };
+    $("bench-run").onclick = runBench;
 
     // ---------- shut up ----------
     const shutUp = () => api("/stop", {});
@@ -887,6 +1032,8 @@
             renderScrubs(); renderQuiet(); drawHisto();
             if (document.activeElement !== $("prompt")) $("prompt").value = cfg.condense_prompt;
           });
+          initEngines().catch(() => {});
+          initVoices().catch(() => {});
           return;
         }
         if (ev.ts) {
@@ -903,6 +1050,7 @@
       cfg = c.config;
       buildScrubs(); renderScrubs(); renderQuiet();
       $("prompt").value = cfg.condense_prompt;
+      await initEngines();
       await initVoices();
       const t = await api("/log/tail?limit=300");
       entries = t.entries || [];
