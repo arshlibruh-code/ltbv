@@ -216,7 +216,9 @@ CONFIG_SPEC = {
     "max_direct_chars": {"default": 400, "kind": "int", "min": 50, "max": 5000},
     "idle_exit_s": {"default": 600, "kind": "int", "min": 60, "max": 86400},
     "project_window_s": {"default": 600, "kind": "int", "min": 30, "max": 7200},
-    "deepseek_timeout_s": {"default": 12, "kind": "int", "min": 2, "max": 60},
+    "condense_provider": {"default": "deepseek", "kind": "condense_provider"},
+    "condense_model": {"default": "deepseek-v4-flash", "kind": "str"},
+    "condense_timeout_s": {"default": 12, "kind": "int", "min": 2, "max": 60},
     "rate": {"default": 1.0, "kind": "float", "min": 0.5, "max": 3.0},
     "volume": {"default": 1.0, "kind": "float", "min": 0.0, "max": 1.0},
     "temperature": {"default": 0.7, "kind": "float", "min": 0.1, "max": 1.5},
@@ -386,6 +388,11 @@ def validate_field(key: str, value):
         if value not in ENGINES or not ENGINES[value].installed():
             raise ValueError(key)
         return value
+    if kind == "condense_provider":
+        value = str(value).strip().lower()
+        if value not in {"deepseek", "none"}:
+            raise ValueError(key)
+        return value
     raise ValueError(key)
 
 
@@ -401,6 +408,8 @@ def load_config() -> None:
         except Exception:
             append_log("config_error", field="_file")
             raw = {}
+    if "condense_timeout_s" not in raw and "deepseek_timeout_s" in raw:
+        raw["condense_timeout_s"] = raw["deepseek_timeout_s"]
     for key, value in raw.items():
         if key not in CONFIG_SPEC:
             continue
@@ -534,13 +543,19 @@ def read_deepseek_env() -> dict:
 
 
 def condense(text: str) -> str | None:
+    provider = config.get("condense_provider", "deepseek")
+    if provider == "none":
+        return None
+    if provider != "deepseek":
+        append_log("condense_error", provider=provider, detail="unsupported provider")
+        return None
     try:
         env = read_deepseek_env()
         token = env.get("ANTHROPIC_AUTH_TOKEN")
         if not token:
             return None
         body = {
-            "model": "deepseek-v4-flash",
+            "model": config.get("condense_model") or "deepseek-v4-flash",
             "max_tokens": 1000,
             "messages": [
                 {"role": "system", "content": config["condense_prompt"]},
@@ -557,7 +572,7 @@ def condense(text: str) -> str | None:
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=config["deepseek_timeout_s"]) as resp:
+        with urllib.request.urlopen(req, timeout=config["condense_timeout_s"]) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         content = data.get("content") or []
         for block in content:
