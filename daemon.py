@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import queue
 import re
 import signal
 import subprocess
@@ -86,8 +87,10 @@ working_cwd = None
 last_activity = time.monotonic()
 started_at = time.monotonic()
 last_spoken_ts = None
-last_raw = None
-last_clean = None
+last_stages = None
+now_speaking = None
+sse_subscribers = []
+sse_lock = threading.Lock()
 recent_projects = {}
 prefix_counter = 0
 
@@ -122,13 +125,24 @@ def read_json(handler: BaseHTTPRequestHandler) -> dict:
     return json.loads(handler.rfile.read(length).decode("utf-8"))
 
 
+def publish(event: dict) -> None:
+    with sse_lock:
+        subs = list(sse_subscribers)
+    for sub in subs:
+        try:
+            sub.put_nowait(event)
+        except Exception:
+            pass
+
+
 def append_log(event: str, **fields) -> None:
+    payload = {"ts": round(time.time(), 3), "event": event, **fields}
+    publish(payload)
     try:
         if LOG_PATH.exists():
             lines = LOG_PATH.read_text().splitlines()
             if len(lines) > 500:
                 LOG_PATH.write_text("\n".join(lines[-250:]) + "\n")
-        payload = {"ts": round(time.time(), 3), "event": event, **fields}
         with LOG_PATH.open("a") as handle:
             handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
     except Exception:
@@ -365,6 +379,7 @@ def prepare_speech(raw: str) -> tuple[str, dict]:
             meta["table_fallback"] = True
             return TABLE_FALLBACK_TEXT, meta
         return "", meta
+    meta["_cleaned"] = text
     if len(text) > config["max_direct_chars"]:
         condensed = condense(text)
         if condensed is None:
@@ -515,8 +530,8 @@ def afplay_args(path: Path) -> list:
     return args
 
 
-def play(path: Path, gen: int, key, cwd: str | None) -> None:
-    global active_player, active_cwd, last_spoken_ts
+def play(path: Path, gen: int, key, cwd: str | None, text: str = "", voice: str = "", kind: str = "reply") -> None:
+    global active_player, active_cwd, last_spoken_ts, now_speaking
     with state_lock:
         if is_stale(key, gen):
             try:
@@ -527,7 +542,15 @@ def play(path: Path, gen: int, key, cwd: str | None) -> None:
         active_player = subprocess.Popen(afplay_args(path), start_new_session=True)
         active_cwd = cwd
         last_spoken_ts = time.time()
+        now_speaking = {
+            "text": text[:240],
+            "voice": voice,
+            "kind": kind,
+            "project": project_name(cwd),
+            "ts": last_spoken_ts,
+        }
         player = active_player
+    publish({"event": "now", "on": True, **now_speaking})
     try:
         player.wait()
     finally:
@@ -535,6 +558,8 @@ def play(path: Path, gen: int, key, cwd: str | None) -> None:
             if active_player is player:
                 active_player = None
                 active_cwd = None
+            now_speaking = None
+        publish({"event": "now", "on": False})
         try:
             path.unlink()
         except OSError:
@@ -550,7 +575,7 @@ def pick_job_locked() -> dict:
 
 
 def process_job(job: dict) -> None:
-    global last_raw, last_clean
+    global last_stages
     gen = job["gen"]
     raw = job["raw"]
     cwd = job["cwd"]
@@ -560,10 +585,16 @@ def process_job(job: dict) -> None:
         text, meta = raw, {}
     else:
         text, meta = prepare_speech(raw)
+    cleaned = meta.pop("_cleaned", "")
     if kind == "reply" and not job.get("prepared"):
         with state_lock:
-            last_raw = raw
-            last_clean = text
+            last_stages = {
+                "raw": raw,
+                "cleaned": cleaned,
+                "spoken": text,
+                "condense": meta.get("condense"),
+                "table_skipped": meta.get("table_skipped"),
+            }
     if not text:
         append_log("skip_empty", cwd=cwd, **meta)
         return
@@ -597,7 +628,7 @@ def process_job(job: dict) -> None:
             spoken_chars=len(text),
             **meta,
         )
-        play(wav_path, gen, key, cwd)
+        play(wav_path, gen, key, cwd, text=text, voice=voice, kind=kind)
 
 
 def worker() -> None:
@@ -743,9 +774,36 @@ class Handler(BaseHTTPRequestHandler):
                         "model_loaded": tts_model is not None,
                         "uptime_s": round(now() - started_at, 1),
                         "last_spoken_ts": last_spoken_ts,
+                        "now_speaking": now_speaking,
                         "git_rev": GIT_REV,
                     },
                 )
+                return
+            if route == "/events":
+                sub = queue.Queue(maxsize=200)
+                with sse_lock:
+                    sse_subscribers.append(sub)
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Cache-Control", "no-cache")
+                    self.end_headers()
+                    hello = {"event": "hello", "now": now_speaking}
+                    self.wfile.write(f"data: {json.dumps(hello, ensure_ascii=True)}\n\n".encode())
+                    self.wfile.flush()
+                    while True:
+                        try:
+                            ev = sub.get(timeout=15)
+                            self.wfile.write(f"data: {json.dumps(ev, ensure_ascii=True)}\n\n".encode())
+                        except queue.Empty:
+                            self.wfile.write(b": ping\n\n")
+                        self.wfile.flush()
+                except Exception:
+                    pass
+                finally:
+                    with sse_lock:
+                        if sub in sse_subscribers:
+                            sse_subscribers.remove(sub)
                 return
             if route == "/config":
                 json_response(
@@ -765,12 +823,7 @@ class Handler(BaseHTTPRequestHandler):
                 json_response(
                     self,
                     200,
-                    {
-                        "ok": True,
-                        "entries": log_tail(limit),
-                        "last_raw": last_raw,
-                        "last_clean": last_clean,
-                    },
+                    {"ok": True, "entries": log_tail(limit), "stages": last_stages},
                 )
                 return
             json_response(self, 404, {"error": "not_found"})
@@ -804,6 +857,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/config":
                 data = read_json(self)
                 applied, errors = apply_config(data)
+                publish({"event": "config"})
                 json_response(
                     self, 200, {"ok": not errors, "config": applied, "errors": errors}
                 )
@@ -821,10 +875,10 @@ class Handler(BaseHTTPRequestHandler):
                 json_response(self, 202, {"ok": True, "generation": gen})
                 return
             if self.path == "/recondense":
-                if not last_raw:
+                if not last_stages or not last_stages.get("raw"):
                     json_response(self, 200, {"ok": False, "error": "no_last_reply"})
                     return
-                tableless, _ = strip_markdown_tables(last_raw)
+                tableless, _ = strip_markdown_tables(last_stages["raw"])
                 cleaned = strip_markdown(tableless)
                 out = condense(cleaned)
                 if out is None:

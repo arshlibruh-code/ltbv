@@ -10,6 +10,7 @@
       --bg: #141414;
       --panel: #1a1a1a;
       --panel-2: #1f1f1f;
+      --ink: #101010;
       --line: #2b2b2b;
       --line-soft: #242424;
       --text: #e8e8e8;
@@ -25,311 +26,551 @@
     * { box-sizing: border-box; border-radius: 0 !important; }
     body {
       margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
-      font-family: var(--sans); font-size: 13px; line-height: 1.4;
+      font-family: var(--sans); font-size: 12px; line-height: 1.45;
     }
-    code, .num, input, select, textarea, button.mono { font-family: var(--mono); }
-    .wrap { max-width: 1180px; margin: 0 auto; padding: 16px 18px 40px; }
+    code, .num, input, select, textarea { font-family: var(--mono); }
+    ::selection { background: #2a3f5f; }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 14px 16px 48px; }
 
+    /* ---------- top ---------- */
     .topbar {
       display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-      justify-content: space-between; padding: 10px 12px; margin-bottom: 16px;
+      justify-content: space-between; padding: 9px 12px; margin-bottom: 10px;
       border: 1px solid var(--line); background: var(--panel);
     }
-    .topbar h1 { margin: 0; font-size: 14px; }
+    .topbar h1 { margin: 0; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
     .pills { display: flex; flex-wrap: wrap; gap: 6px; }
     .pill {
-      display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px;
+      display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px;
       border: 1px solid var(--line); background: var(--panel-2);
-      color: var(--muted); font-size: 11px; white-space: nowrap;
+      color: var(--muted); font-size: 10px; white-space: nowrap;
+      font-family: var(--mono); letter-spacing: 0.04em;
     }
     .dot { width: 6px; height: 6px; background: var(--faint); }
     .dot.on { background: var(--green); }
     .btn {
-      padding: 6px 10px; border: 1px solid var(--line); background: var(--panel-2);
-      color: var(--text); cursor: pointer; font-size: 11px; font-family: var(--sans);
+      padding: 5px 10px; border: 1px solid var(--line); background: var(--panel-2);
+      color: var(--text); cursor: pointer; font-size: 10px; font-family: var(--sans);
+      text-transform: uppercase; letter-spacing: 0.06em;
     }
     .btn:hover { border-color: var(--blue); }
-    .btn.danger { border-color: #4a2325; color: var(--red); }
+    .btn.danger { color: var(--red); }
     .btn.danger:hover { border-color: var(--red); }
-    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn:disabled { opacity: 0.35; cursor: default; }
 
-    section { margin-bottom: 18px; border: 1px solid var(--line); background: var(--panel); }
+    /* now speaking strip */
+    #nowstrip {
+      display: none; align-items: center; gap: 10px; margin-bottom: 10px;
+      padding: 8px 12px; border: 1px solid var(--line); background: var(--panel);
+      overflow: hidden;
+    }
+    #nowstrip.on { display: flex; }
+    .pulse { width: 8px; height: 8px; background: var(--green); flex: none; animation: pulse 1s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.7); } }
+    #now-meta { font-family: var(--mono); font-size: 10px; color: var(--muted); flex: none; text-transform: uppercase; letter-spacing: 0.05em; }
+    #now-meta b { color: var(--text); font-weight: 400; }
+    #now-text { flex: 1; min-width: 0; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ---------- layout ---------- */
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+    .col { display: grid; gap: 10px; min-width: 0; }
+    @media (max-width: 1140px) { .grid2 { grid-template-columns: 1fr; } }
+
+    section { border: 1px solid var(--line); background: var(--panel); min-width: 0; }
     section > header {
-      display: flex; align-items: baseline; gap: 10px; padding: 9px 12px;
-      border-bottom: 1px solid var(--line-soft); background: #171717;
+      display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+      padding: 8px 12px; border-bottom: 1px solid var(--line-soft); background: #171717;
     }
-    section > header h2 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
-    section > header span { color: var(--faint); font-size: 11px; }
+    section > header h2 { margin: 0; font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; }
+    section > header span { color: var(--faint); font-size: 10px; }
     .body { padding: 12px; }
-
-    .histo-wrap { position: relative; }
-    canvas { display: block; width: 100%; height: 150px; cursor: ew-resize; }
-    .readout { margin-top: 6px; display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 11px; }
-    .readout b { color: var(--text); font-family: var(--mono); }
-
-    .knobs { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px 16px; margin-top: 12px; }
-    .knob label { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-bottom: 3px; }
-    .knob label b { color: var(--text); font-family: var(--mono); font-weight: 400; }
-    input[type=range] { width: 100%; accent-color: #68a4ff; background: transparent; }
-    .quiet-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--muted); font-size: 11px; flex-wrap: wrap; }
-    input[type=text], select, textarea {
-      background: #101010; border: 1px solid var(--line); color: var(--text);
-      padding: 5px 7px; font-size: 12px;
-    }
-    input.hhmm { width: 64px; text-align: center; }
-
-    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .pane { border: 1px solid var(--line-soft); background: #101010; padding: 10px; min-height: 90px; max-height: 260px; overflow: auto; font-size: 12px; color: var(--muted); white-space: pre-wrap; word-break: break-word; }
-    .pane-title { color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
-    .cut { background: #33181a; color: #d29a9d; text-decoration: line-through; }
-
-    .lab-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-bottom: 12px; }
-    .assign { border: 1px solid var(--line-soft); background: var(--panel-2); padding: 10px; }
-    .assign b { display: block; font-size: 11px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
-    .assign .row { display: flex; gap: 6px; }
-    .assign select { flex: 1; min-width: 0; }
-    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-    .chip {
-      display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 8px;
-      border: 1px solid var(--line); background: var(--panel-2); font-size: 11px; color: var(--muted);
-    }
-    .chip button { padding: 2px 6px; font-size: 10px; }
-    .dropzone {
-      margin-top: 12px; padding: 14px; border: 1px dashed var(--line); color: var(--faint);
-      font-size: 11px; text-align: center;
-    }
-
-    .tiles { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-bottom: 12px; }
-    .tile { border: 1px solid var(--line-soft); background: var(--panel-2); padding: 10px; }
-    .tile b { display: block; font-family: var(--mono); font-size: 18px; margin-bottom: 2px; }
-    .tile span { color: var(--muted); font-size: 11px; }
-    .lanes { display: grid; gap: 6px; }
-    .lane { display: grid; grid-template-columns: 150px 1fr; gap: 8px; align-items: center; }
-    .lane .name { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .lane .track { position: relative; height: 18px; background: #101010; border: 1px solid var(--line-soft); }
-    .lane .blip { position: absolute; top: 50%; transform: translate(-50%,-50%); background: var(--blue); }
-    .lane .blip.condensed { background: var(--green); }
-    .lane .blip.table { background: var(--yellow); }
-    .lane .blip.notif { background: var(--red); }
-
-    textarea#prompt { width: 100%; min-height: 110px; resize: vertical; line-height: 1.5; }
-    .row-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
-    #recondense-out { margin-top: 8px; }
-    .hint { color: var(--faint); font-size: 11px; }
-    .saved { color: var(--green); font-size: 11px; opacity: 0; transition: opacity 0.2s; }
+    .err-line { color: var(--red); font-size: 10px; font-family: var(--mono); min-height: 14px; margin-top: 6px; }
+    .saved { color: var(--green); font-size: 10px; font-family: var(--mono); opacity: 0; transition: opacity 0.25s; }
     .saved.show { opacity: 1; }
 
-    @media (max-width: 900px) {
-      .knobs, .lab-grid { grid-template-columns: 1fr; }
-      .cols { grid-template-columns: 1fr; }
-      .tiles { grid-template-columns: repeat(2, 1fr); }
+    /* ---------- histogram ---------- */
+    .histo-wrap { position: relative; }
+    #histo { display: block; width: 100%; height: 130px; cursor: ew-resize; touch-action: none; }
+    #histo-tip {
+      position: absolute; display: none; pointer-events: none; z-index: 3;
+      background: var(--ink); border: 1px solid var(--line); padding: 3px 7px;
+      font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: nowrap;
     }
+    .legend { display: flex; gap: 14px; margin-top: 8px; color: var(--faint); font-size: 10px; font-family: var(--mono); flex-wrap: wrap; }
+    .legend b { color: var(--text); font-weight: 400; }
+    .sw { display: inline-block; width: 8px; height: 8px; vertical-align: -1px; margin-right: 5px; }
+
+    /* ---------- scrub controls ---------- */
+    .scrubs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; margin-top: 12px; }
+    @media (max-width: 620px) { .scrubs { grid-template-columns: 1fr; } }
+    .scrub { cursor: ew-resize; user-select: none; padding: 4px 0 6px; position: relative; }
+    .scrub .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .scrub .lbl { color: var(--muted); font-size: 11px; }
+    .scrub .val { font-family: var(--mono); font-size: 12px; color: var(--text); }
+    .scrub .val input {
+      width: 74px; background: var(--ink); border: 1px solid var(--blue); color: var(--text);
+      font-size: 12px; padding: 0 4px; text-align: right;
+    }
+    .scrub .track { margin-top: 5px; height: 2px; background: var(--line-soft); position: relative; }
+    .scrub .fill { position: absolute; left: 0; top: 0; bottom: 0; background: #3d5a86; }
+    .scrub .nub { position: absolute; top: -2px; width: 2px; height: 6px; background: var(--blue); }
+    .scrub:hover .track { background: var(--line); }
+    .scrub.err .val { color: var(--red); }
+    .scrub.err .fill, .scrub.err .nub { background: var(--red); }
+
+    /* ---------- quiet hours strip ---------- */
+    .quiet { margin-top: 14px; }
+    .quiet .cap { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
+    .quiet .cap .lbl { color: var(--muted); font-size: 11px; }
+    .quiet .cap .st { font-family: var(--mono); font-size: 10px; color: var(--faint); }
+    #qstrip {
+      position: relative; height: 26px; border: 1px solid var(--line-soft); background: var(--ink);
+      cursor: ew-resize; touch-action: none;
+      background-image: repeating-linear-gradient(90deg, transparent 0, transparent calc(100%/24 - 1px), #1e1e1e calc(100%/24 - 1px), #1e1e1e calc(100%/24));
+    }
+    .qsel { position: absolute; top: 0; bottom: 0; background: rgba(242, 201, 76, 0.16); border-left: 1px solid var(--yellow); border-right: 1px solid var(--yellow); pointer-events: none; }
+    .qlabels { display: flex; justify-content: space-between; margin-top: 3px; color: var(--faint); font-size: 9px; font-family: var(--mono); }
+    .quiet .actions { display: flex; gap: 8px; margin-top: 7px; align-items: center; }
+
+    /* ---------- inspector ---------- */
+    .stages { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    @media (max-width: 620px) { .stages { grid-template-columns: 1fr; } }
+    .pane-title { color: var(--faint); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 5px; display: flex; justify-content: space-between; }
+    .pane {
+      border: 1px solid var(--line-soft); background: var(--ink); padding: 9px;
+      min-height: 70px; max-height: 220px; overflow: auto; font-size: 11px;
+      color: var(--muted); white-space: pre-wrap; word-break: break-word; line-height: 1.55;
+    }
+    .cut { background: #33181a; color: #c98f92; text-decoration: line-through; }
+    .spoken-row { margin-top: 8px; }
+    .badges { display: inline-flex; gap: 5px; }
+    .badge { font-family: var(--mono); font-size: 9px; padding: 1px 6px; letter-spacing: 0.05em; }
+    .badge.g { background: #10281b; color: var(--green); }
+    .badge.y { background: #2b250f; color: var(--yellow); }
+    .badge.r { background: #2e1416; color: var(--red); }
+    .badge.b { background: #16233a; color: var(--blue); }
+
+    /* ---------- voice lab ---------- */
+    .assigns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+    @media (max-width: 620px) { .assigns { grid-template-columns: 1fr; } }
+    .assign { border: 1px solid var(--line-soft); background: var(--panel-2); padding: 9px; }
+    .assign .who { display: flex; align-items: center; gap: 6px; font-size: 9px; margin-bottom: 7px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-family: var(--mono); }
+    .slotdot { width: 7px; height: 7px; flex: none; }
+    .slotdot.claude { background: var(--blue); }
+    .slotdot.codex { background: var(--green); }
+    .slotdot.notification { background: var(--red); }
+    .assign .row { display: flex; gap: 6px; }
+    select {
+      background: var(--ink); border: 1px solid var(--line); color: var(--text);
+      padding: 4px 6px; font-size: 11px; flex: 1; min-width: 0;
+    }
+    .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 7px; padding: 2px 3px 2px 8px;
+      border: 1px solid var(--line-soft); background: var(--panel-2); font-size: 10px;
+      color: var(--muted); font-family: var(--mono);
+    }
+    .chip .cdots { display: inline-flex; gap: 3px; }
+    .chip button { padding: 2px 7px; font-size: 9px; }
+    .dropzone {
+      margin-top: 12px; padding: 11px; border: 1px dashed var(--line-soft); color: var(--faint);
+      font-size: 10px; text-align: center; font-family: var(--mono); letter-spacing: 0.03em;
+    }
+
+    /* ---------- ledger ---------- */
+    .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+    @media (max-width: 620px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+    .tile { border: 1px solid var(--line-soft); background: var(--panel-2); padding: 8px 10px; }
+    .tile b { display: block; font-family: var(--mono); font-size: 17px; font-weight: 400; margin-bottom: 1px; }
+    .tile span { color: var(--faint); font-size: 10px; }
+    .lanes { display: grid; gap: 6px; }
+    .lane { display: grid; grid-template-columns: 130px 1fr; gap: 8px; align-items: center; }
+    .lane .name { color: var(--muted); font-size: 10px; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lane .track {
+      position: relative; height: 20px; background: var(--ink); border: 1px solid var(--line-soft);
+      background-image: repeating-linear-gradient(90deg, transparent 0, transparent calc(100%/6 - 1px), #1d1d1d calc(100%/6 - 1px), #1d1d1d calc(100%/6));
+    }
+    .lane .track::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 2px; background: #3a3a3a; }
+    .blip { position: absolute; top: 50%; transform: translate(-50%,-50%); background: var(--blue); }
+    .blip.condensed { background: var(--green); }
+    .blip.table { background: var(--yellow); }
+    .blip.notif { background: var(--red); }
+    .axis { display: grid; grid-template-columns: 130px 1fr; gap: 8px; margin-top: 3px; }
+    .axis .ticks { display: flex; justify-content: space-between; color: var(--faint); font-size: 9px; font-family: var(--mono); }
+
+    /* ---------- personality ---------- */
+    textarea#prompt {
+      width: 100%; min-height: 104px; resize: vertical; line-height: 1.55; font-size: 11px;
+      background: var(--ink); border: 1px solid var(--line-soft); color: var(--text); padding: 9px;
+    }
+    .row-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+    #recondense-out { margin-top: 8px; display: none; }
+    .hint { color: var(--faint); font-size: 10px; }
+    kbd { font-family: var(--mono); font-size: 9px; border: 1px solid var(--line); padding: 0 4px; color: var(--muted); }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="topbar">
-      <h1>let-there-be-voice · controller</h1>
+      <h1>let-there-be-voice</h1>
       <div class="pills">
-        <span class="pill"><i class="dot" id="dot"></i> <span id="h-engine">…</span></span>
-        <span class="pill">model <span class="num" id="h-model">…</span></span>
-        <span class="pill">up <span class="num" id="h-uptime">…</span></span>
-        <span class="pill">rev <span class="num" id="h-rev">…</span></span>
-        <span class="pill">spoke <span class="num" id="h-spoke">never</span></span>
+        <span class="pill"><i class="dot" id="dot"></i><span id="h-engine">…</span></span>
+        <span class="pill">model <span id="h-model">…</span></span>
+        <span class="pill">up <span id="h-uptime">…</span></span>
+        <span class="pill">rev <span id="h-rev">…</span></span>
+        <span class="pill">spoke <span id="h-spoke">never</span></span>
       </div>
-      <button class="btn danger" id="shutup">SHUT UP</button>
+      <button class="btn danger" id="shutup" title="spacebar">shut up <kbd>space</kbd></button>
     </div>
 
-    <section>
-      <header><h2>Mixing Desk</h2><span>drag the line on the histogram to set the condense threshold</span></header>
-      <div class="body">
-        <div class="histo-wrap"><canvas id="histo" width="1120" height="150"></canvas></div>
-        <div class="readout">
-          <span>threshold <b id="r-thresh">…</b> chars</span>
-          <span>would have condensed <b id="r-pct">…</b> of recent speaks</span>
-          <span class="saved" id="saved-desk">saved</span>
-        </div>
-        <div class="knobs">
-          <div class="knob"><label>playback rate <b id="v-rate"></b></label><input type="range" id="k-rate" min="0.5" max="2" step="0.05"></div>
-          <div class="knob"><label>volume <b id="v-volume"></b></label><input type="range" id="k-volume" min="0" max="1" step="0.05"></div>
-          <div class="knob"><label>temperature (reloads model) <b id="v-temperature"></b></label><input type="range" id="k-temperature" min="0.1" max="1.5" step="0.05"></div>
-          <div class="knob"><label>idle exit <b id="v-idle_exit_s"></b> s</label><input type="range" id="k-idle_exit_s" min="60" max="3600" step="30"></div>
-          <div class="knob"><label>prefix window <b id="v-project_window_s"></b> s</label><input type="range" id="k-project_window_s" min="60" max="3600" step="30"></div>
-          <div class="knob"><label>deepseek timeout <b id="v-deepseek_timeout_s"></b> s</label><input type="range" id="k-deepseek_timeout_s" min="2" max="30" step="1"></div>
-        </div>
-        <div class="quiet-row">
-          quiet hours
-          <input type="text" class="hhmm" id="q-start" placeholder="00:00" maxlength="5">
-          to
-          <input type="text" class="hhmm" id="q-end" placeholder="08:00" maxlength="5">
-          <button class="btn" id="q-set">set</button>
-          <button class="btn" id="q-clear">clear</button>
-          <span class="hint" id="q-state"></span>
-        </div>
-      </div>
-    </section>
+    <div id="nowstrip">
+      <i class="pulse"></i>
+      <span id="now-meta"></span>
+      <span id="now-text"></span>
+      <button class="btn danger" id="now-stop">stop</button>
+    </div>
 
-    <section>
-      <header><h2>Strip Inspector</h2><span>last reply, raw beside what survived cleanup</span></header>
-      <div class="body">
-        <div class="cols">
-          <div><div class="pane-title">raw</div><div class="pane" id="raw-pane">no reply seen yet by this daemon</div></div>
-          <div><div class="pane-title">spoken</div><div class="pane" id="clean-pane">…</div></div>
-        </div>
-      </div>
-    </section>
+    <div class="grid2">
+      <div class="col">
 
-    <section>
-      <header><h2>Voice Lab</h2><span>who speaks for whom</span></header>
-      <div class="body">
-        <div class="lab-grid">
-          <div class="assign"><b>claude</b><div class="row"><select id="voice-claude"></select><button class="btn" data-audition="claude">▶</button></div></div>
-          <div class="assign"><b>codex</b><div class="row"><select id="voice-codex"></select><button class="btn" data-audition="codex">▶</button></div></div>
-          <div class="assign"><b>notification</b><div class="row"><select id="voice-notification"></select><button class="btn" data-audition="notification">▶</button></div></div>
-        </div>
-        <div class="pane-title">catalog</div>
-        <div class="chips" id="catalog"></div>
-        <div class="dropzone">voice cloning dormant · accept terms at huggingface.co/kyutai/pocket-tts and run hf auth login, then this becomes a drop-a-wav zone</div>
-      </div>
-    </section>
+        <section>
+          <header><h2>Mixing Desk</h2><span class="saved" id="saved-desk">saved</span></header>
+          <div class="body">
+            <div class="histo-wrap">
+              <canvas id="histo"></canvas>
+              <div id="histo-tip"></div>
+            </div>
+            <div class="legend">
+              <span><i class="sw" style="background:#274064"></i>spoken raw</span>
+              <span><i class="sw" style="background:#2e5731"></i>would condense</span>
+              <span>threshold <b id="r-thresh">…</b></span>
+              <span>condenses <b id="r-pct">…</b> of recent</span>
+              <span>median <b id="r-median">…</b></span>
+            </div>
+            <div class="scrubs" id="scrubs"></div>
+            <div class="quiet">
+              <div class="cap">
+                <span class="lbl">quiet hours · drag across the day</span>
+                <span class="st" id="q-state">disabled</span>
+              </div>
+              <div id="qstrip"></div>
+              <div class="qlabels"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+              <div class="actions">
+                <button class="btn" id="q-clear">clear</button>
+                <span class="hint">speech is accepted but stays silent inside the window</span>
+              </div>
+            </div>
+            <div class="err-line" id="err-desk"></div>
+          </div>
+        </section>
 
-    <section>
-      <header><h2>Ledger</h2><span>from .voice.log</span></header>
-      <div class="body">
-        <div class="tiles">
-          <div class="tile"><b id="t-talk">…</b><span>est. talk-time in log</span></div>
-          <div class="tile"><b id="t-speaks">…</b><span>speaks in log</span></div>
-          <div class="tile"><b id="t-condense">…</b><span>condense rate</span></div>
-          <div class="tile"><b id="t-tables">…</b><span>tables skipped</span></div>
-        </div>
-        <div class="lanes" id="lanes"></div>
-        <div class="hint" style="margin-top:8px">blips: blue spoken raw · green condensed · yellow table skip · red notification · last 12 hours</div>
-      </div>
-    </section>
+        <section>
+          <header><h2>Strip Inspector</h2><span>last reply through the pipeline</span></header>
+          <div class="body">
+            <div class="stages">
+              <div><div class="pane-title"><span>raw</span><span id="raw-count"></span></div><div class="pane" id="raw-pane">no reply seen yet by this daemon</div></div>
+              <div><div class="pane-title"><span>cleaned</span><span id="clean-count"></span></div><div class="pane" id="clean-pane">…</div></div>
+            </div>
+            <div class="spoken-row">
+              <div class="pane-title"><span>spoken</span><span class="badges" id="stage-badges"></span></div>
+              <div class="pane" id="spoken-pane">…</div>
+            </div>
+          </div>
+        </section>
 
-    <section>
-      <header><h2>Personality</h2><span>the condense system prompt, spoken taste lives here</span></header>
-      <div class="body">
-        <textarea id="prompt"></textarea>
-        <div class="row-actions">
-          <button class="btn" id="save-prompt">save prompt</button>
-          <button class="btn" id="recondense">re-condense last reply ▶</button>
-          <span class="saved" id="saved-prompt">saved</span>
-        </div>
-        <div class="pane" id="recondense-out" style="display:none"></div>
       </div>
-    </section>
+      <div class="col">
+
+        <section>
+          <header><h2>Voice Lab</h2><span>generated live from one reference sample each</span></header>
+          <div class="body">
+            <div class="assigns">
+              <div class="assign"><div class="who"><i class="slotdot claude"></i>claude</div><div class="row"><select id="voice-claude"></select><button class="btn" data-audition="claude">play</button></div></div>
+              <div class="assign"><div class="who"><i class="slotdot codex"></i>codex</div><div class="row"><select id="voice-codex"></select><button class="btn" data-audition="codex">play</button></div></div>
+              <div class="assign"><div class="who"><i class="slotdot notification"></i>notify</div><div class="row"><select id="voice-notification"></select><button class="btn" data-audition="notification">play</button></div></div>
+            </div>
+            <div class="pane-title"><span>catalog</span><span id="lab-state"></span></div>
+            <div class="chips" id="catalog"></div>
+            <div class="dropzone">voice cloning dormant · accept terms at huggingface.co/kyutai/pocket-tts + hf auth login, then this becomes a drop-a-wav zone</div>
+            <div class="err-line" id="err-lab"></div>
+          </div>
+        </section>
+
+        <section>
+          <header><h2>Ledger</h2><span>last 12 hours</span></header>
+          <div class="body">
+            <div class="tiles">
+              <div class="tile"><b id="t-talk">…</b><span>talk-time today</span></div>
+              <div class="tile"><b id="t-speaks">…</b><span>speaks today</span></div>
+              <div class="tile"><b id="t-condense">…</b><span>condense rate</span></div>
+              <div class="tile"><b id="t-tables">…</b><span>tables skipped</span></div>
+            </div>
+            <div class="lanes" id="lanes"></div>
+            <div class="axis"><span></span><div class="ticks"><span>-12h</span><span>-10h</span><span>-8h</span><span>-6h</span><span>-4h</span><span>-2h</span><span>now</span></div></div>
+            <div class="legend" style="margin-top:8px">
+              <span><i class="sw" style="background:var(--blue)"></i>raw</span>
+              <span><i class="sw" style="background:var(--green)"></i>condensed</span>
+              <span><i class="sw" style="background:var(--yellow)"></i>table</span>
+              <span><i class="sw" style="background:var(--red)"></i>notification</span>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <header><h2>Personality</h2><span class="saved" id="saved-prompt">saved</span></header>
+          <div class="body">
+            <textarea id="prompt" spellcheck="false"></textarea>
+            <div class="row-actions">
+              <button class="btn" id="save-prompt">save prompt</button>
+              <button class="btn" id="recondense">re-condense last reply</button>
+              <span class="hint">changes how long replies get summarized before speech</span>
+            </div>
+            <div class="pane" id="recondense-out"></div>
+            <div class="err-line" id="err-prompt"></div>
+          </div>
+        </section>
+
+      </div>
+    </div>
   </div>
 
   <script>
     const $ = (id) => document.getElementById(id);
     const api = async (path, body) => {
-      const opts = body ? { method: "POST", body: JSON.stringify(body) } : {};
-      const res = await fetch(path, opts);
+      const res = await fetch(path, body ? { method: "POST", body: JSON.stringify(body) } : {});
       return res.json();
     };
+    const flash = (id) => { const el = $(id); el.classList.add("show"); setTimeout(() => el.classList.remove("show"), 1100); };
 
     let cfg = null;
     let entries = [];
     let dragThresh = null;
+
+    // ---------- config save with inline armor errors ----------
     let saveTimer = null;
-
-    const flash = (id) => {
-      const el = $(id);
-      el.classList.add("show");
-      setTimeout(() => el.classList.remove("show"), 1200);
-    };
-
-    const pushConfig = (patch, savedId) => {
+    function pushConfig(patch, savedId, errId) {
       clearTimeout(saveTimer);
       saveTimer = setTimeout(async () => {
         const out = await api("/config", patch);
         cfg = out.config;
-        if (savedId) flash(savedId);
-        renderKnobs(); renderQuiet(); drawHisto();
-      }, 350);
-    };
+        if (out.errors && out.errors.length) {
+          if (errId) $(errId).textContent = "rejected: " + out.errors.join(", ") + " (reverted to last valid)";
+          for (const key of out.errors) {
+            const el = document.querySelector(`.scrub[data-key="${key}"]`);
+            if (el) { el.classList.add("err"); setTimeout(() => el.classList.remove("err"), 1400); }
+          }
+        } else {
+          if (errId) $(errId).textContent = "";
+          if (savedId) flash(savedId);
+        }
+        renderScrubs(); renderQuiet(); drawHisto();
+      }, 300);
+    }
 
-    // ---- health ----
-    const fmtUp = (s) => s > 3600 ? (s/3600).toFixed(1)+"h" : s > 60 ? Math.round(s/60)+"m" : Math.round(s)+"s";
+    // ---------- health ----------
+    const fmtDur = (s) => s >= 5940 ? (s/3600).toFixed(1) + "h" : s >= 120 ? Math.round(s/60) + "m" : Math.round(s) + "s";
     async function pollHealth() {
       try {
         const h = await api("/health");
         $("dot").classList.add("on");
         $("h-engine").textContent = h.engine;
         $("h-model").textContent = h.model_loaded ? "loaded" : "cold";
-        $("h-uptime").textContent = fmtUp(h.uptime_s);
+        $("h-uptime").textContent = fmtDur(h.uptime_s);
         $("h-rev").textContent = h.git_rev || "?";
-        $("h-spoke").textContent = h.last_spoken_ts ? new Date(h.last_spoken_ts*1000).toLocaleTimeString() : "never";
+        $("h-spoke").textContent = h.last_spoken_ts ? new Date(h.last_spoken_ts * 1000).toLocaleTimeString() : "never";
       } catch { $("dot").classList.remove("on"); }
     }
 
-    // ---- mixing desk ----
-    const KNOBS = ["rate","volume","temperature","idle_exit_s","project_window_s","deepseek_timeout_s"];
-    function renderKnobs() {
-      for (const k of KNOBS) {
-        $("k-"+k).value = cfg[k];
-        $("v-"+k).textContent = cfg[k];
+    // ---------- now speaking strip ----------
+    function setNow(now) {
+      const on = !!(now && now.text);
+      $("nowstrip").classList.toggle("on", on);
+      if (on) {
+        $("now-meta").innerHTML = `<b>${now.voice || "?"}</b> · ${now.kind || "reply"}${now.project ? " · " + now.project : ""}`;
+        $("now-text").textContent = now.text;
       }
-      $("r-thresh").textContent = dragThresh ?? cfg.max_direct_chars;
+      auditionPlaying = on && now.kind === "audition";
+      setLabButtons();
     }
-    for (const k of KNOBS) {
-      $("k-"+k).addEventListener("input", (e) => {
-        $("v-"+k).textContent = e.target.value;
-        pushConfig({ [k]: parseFloat(e.target.value) }, "saved-desk");
+
+    // ---------- scrub controls ----------
+    const KNOBS = [
+      { key: "rate",               label: "playback rate", min: 0.5, max: 2,    step: 0.05, fmt: (v) => v.toFixed(2) + "x" },
+      { key: "volume",             label: "volume",        min: 0,   max: 1,    step: 0.05, fmt: (v) => Math.round(v * 100) + "%" },
+      { key: "temperature",        label: "temperature · reloads model", min: 0.1, max: 1.5, step: 0.05, fmt: (v) => v.toFixed(2) },
+      { key: "idle_exit_s",        label: "idle exit",     min: 60,  max: 3600, step: 30,   fmt: fmtDur },
+      { key: "project_window_s",   label: "prefix window", min: 60,  max: 3600, step: 30,   fmt: fmtDur },
+      { key: "deepseek_timeout_s", label: "deepseek timeout", min: 2, max: 30,  step: 1,    fmt: (v) => v + "s" },
+    ];
+    function buildScrubs() {
+      const host = $("scrubs");
+      for (const k of KNOBS) {
+        const el = document.createElement("div");
+        el.className = "scrub"; el.dataset.key = k.key;
+        el.innerHTML = `<div class="row"><span class="lbl">${k.label}</span><b class="val"></b></div>
+          <div class="track"><div class="fill"></div><div class="nub"></div></div>`;
+        host.appendChild(el);
+        attachScrub(el, k);
+      }
+    }
+    function renderScrubs() {
+      for (const k of KNOBS) renderScrub(document.querySelector(`.scrub[data-key="${k.key}"]`), k, cfg[k.key]);
+    }
+    function renderScrub(el, k, v) {
+      el.querySelector(".val").textContent = k.fmt(v);
+      const frac = (v - k.min) / (k.max - k.min);
+      el.querySelector(".fill").style.width = (frac * 100) + "%";
+      el.querySelector(".nub").style.left = `calc(${frac * 100}% - 1px)`;
+    }
+    function attachScrub(el, k) {
+      let x0 = 0, v0 = 0, live = null, moved = false, pid = null;
+      const quant = (v) => Math.min(k.max, Math.max(k.min, Math.round(v / k.step) * k.step));
+      el.addEventListener("pointerdown", (e) => {
+        if (e.target.tagName === "INPUT") return;
+        x0 = e.clientX; v0 = cfg[k.key]; moved = false; pid = e.pointerId;
+        el.setPointerCapture(pid);
       });
+      el.addEventListener("pointermove", (e) => {
+        if (pid === null) return;
+        const dx = e.clientX - x0;
+        if (!moved && Math.abs(dx) < 3) return;
+        moved = true;
+        const span = e.shiftKey ? 1200 : 240;
+        live = quant(v0 + (dx / span) * (k.max - k.min));
+        renderScrub(el, k, live);
+      });
+      const finish = () => {
+        if (pid === null) return;
+        el.releasePointerCapture?.(pid); pid = null;
+        if (moved && live !== null && live !== cfg[k.key]) {
+          cfg[k.key] = live;
+          pushConfig({ [k.key]: live }, "saved-desk", "err-desk");
+        } else if (!moved) {
+          typeIn(el, k);
+        }
+        live = null;
+      };
+      el.addEventListener("pointerup", finish);
+      el.addEventListener("pointercancel", finish);
+    }
+    function typeIn(el, k) {
+      const valEl = el.querySelector(".val");
+      const input = document.createElement("input");
+      input.value = cfg[k.key];
+      valEl.textContent = ""; valEl.appendChild(input);
+      input.focus(); input.select();
+      const done = (commit) => {
+        const v = parseFloat(input.value);
+        if (commit && !isNaN(v)) {
+          cfg[k.key] = Math.min(k.max, Math.max(k.min, v));
+          pushConfig({ [k.key]: cfg[k.key] }, "saved-desk", "err-desk");
+        }
+        renderScrub(el, k, cfg[k.key]);
+      };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") done(true);
+        if (e.key === "Escape") done(false);
+        e.stopPropagation();
+      });
+      input.addEventListener("blur", () => done(true));
     }
 
+    // ---------- quiet hours paint strip ----------
+    function hm(mins) { return String(Math.floor(mins / 60)).padStart(2, "0") + ":" + String(mins % 60).padStart(2, "0"); }
     function renderQuiet() {
+      const strip = $("qstrip");
+      strip.querySelectorAll(".qsel").forEach((n) => n.remove());
       const q = cfg.quiet_hours;
-      $("q-start").value = q ? q.start : "";
-      $("q-end").value = q ? q.end : "";
-      $("q-state").textContent = q ? `muted ${q.start}-${q.end}` : "disabled";
+      $("q-state").textContent = q ? `${q.start} → ${q.end}` : "disabled";
+      if (!q) return;
+      const toMin = (s) => parseInt(s.slice(0, 2)) * 60 + parseInt(s.slice(3));
+      const a = toMin(q.start), b = toMin(q.end);
+      const seg = (from, to) => {
+        const d = document.createElement("div");
+        d.className = "qsel";
+        d.style.left = (from / 1440 * 100) + "%";
+        d.style.width = ((to - from) / 1440 * 100) + "%";
+        strip.appendChild(d);
+      };
+      if (a < b) seg(a, b); else { seg(a, 1440); seg(0, b); }
     }
-    $("q-set").onclick = () => {
-      const start = $("q-start").value.trim(), end = $("q-end").value.trim();
-      if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) { $("q-state").textContent = "use HH:MM"; return; }
-      pushConfig({ quiet_hours: { start, end } }, "saved-desk");
-    };
-    $("q-clear").onclick = () => pushConfig({ quiet_hours: null }, "saved-desk");
+    (() => {
+      const strip = $("qstrip");
+      let startMin = null, dragging = false;
+      const toMin = (e) => {
+        const r = strip.getBoundingClientRect();
+        const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+        return Math.round(frac * 1440 / 15) * 15;
+      };
+      strip.addEventListener("pointerdown", (e) => {
+        dragging = true; startMin = toMin(e); strip.setPointerCapture(e.pointerId);
+      });
+      strip.addEventListener("pointermove", (e) => {
+        if (!dragging) return;
+        const cur = toMin(e);
+        cfg.quiet_hours = startMin === cur ? null : { start: hm(startMin % 1440), end: hm(cur % 1440) };
+        renderQuiet();
+      });
+      strip.addEventListener("pointerup", (e) => {
+        if (!dragging) return;
+        dragging = false;
+        const cur = toMin(e);
+        if (cur === startMin) { return; }
+        const q = { start: hm(startMin % 1440), end: hm(cur % 1440) };
+        cfg.quiet_hours = q;
+        pushConfig({ quiet_hours: q }, "saved-desk", "err-desk");
+      });
+      $("q-clear").onclick = () => { cfg.quiet_hours = null; renderQuiet(); pushConfig({ quiet_hours: null }, "saved-desk", "err-desk"); };
+    })();
 
-    // histogram
+    // ---------- histogram ----------
     const BUCKET = 50, MAXCH = 1200;
-    function speakChars() {
-      return entries.filter(e => e.event === "speak" && e.kind !== "audition").map(e => e.spoken_chars || 0);
-    }
+    const speakEntries = () => entries.filter((e) => e.event === "speak" && e.kind !== "audition");
     function drawHisto() {
       const cv = $("histo"), ctx = cv.getContext("2d");
-      const W = cv.width = cv.clientWidth * 2, H = cv.height = 300;
-      ctx.clearRect(0,0,W,H);
-      const chars = speakChars();
+      const dpr = window.devicePixelRatio || 1;
+      const W = cv.clientWidth, H = cv.clientHeight;
+      cv.width = W * dpr; cv.height = H * dpr;
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, W, H);
+      const chars = speakEntries().map((e) => e.spoken_chars || 0);
       const nb = Math.ceil(MAXCH / BUCKET);
       const buckets = new Array(nb).fill(0);
-      for (const c of chars) buckets[Math.min(nb-1, Math.floor(c/BUCKET))]++;
+      for (const c of chars) buckets[Math.min(nb - 1, Math.floor(c / BUCKET))]++;
       const peak = Math.max(1, ...buckets);
       const bw = W / nb;
       const thresh = dragThresh ?? (cfg ? cfg.max_direct_chars : 400);
       for (let i = 0; i < nb; i++) {
-        const h = (buckets[i]/peak) * (H-30);
-        const over = (i+1)*BUCKET > thresh;
-        ctx.fillStyle = over ? "#2e5731" : "#274064";
-        ctx.fillRect(i*bw+2, H-20-h, bw-4, h);
+        const h = (buckets[i] / peak) * (H - 26);
+        ctx.fillStyle = (i + 1) * BUCKET > thresh ? "#2e5731" : "#274064";
+        ctx.fillRect(i * bw + 1, H - 14 - h, bw - 2, h);
       }
-      // axis labels
-      ctx.fillStyle = "#6a6a6a"; ctx.font = "20px 'Share Tech Mono', monospace";
-      for (let c = 0; c <= MAXCH; c += 200) ctx.fillText(c, (c/MAXCH)*W + 2, H-4);
-      // threshold line
-      const x = (thresh/MAXCH) * W;
-      ctx.strokeStyle = "#f2c94c"; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H-20); ctx.stroke();
+      ctx.fillStyle = "#6a6a6a"; ctx.font = "9px 'Share Tech Mono', monospace";
+      for (let c = 0; c <= MAXCH; c += 200) {
+        const x = (c / MAXCH) * W;
+        ctx.fillRect(x, H - 13, 1, 3);
+        ctx.fillText(c, Math.min(x + 2, W - 24), H - 3);
+      }
+      const sorted = [...chars].sort((a, b) => a - b);
+      const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : null;
+      if (median !== null) {
+        const mx = (median / MAXCH) * W;
+        ctx.fillStyle = "#9a9a9a";
+        ctx.fillRect(mx, 0, 1, H - 14);
+      }
+      const x = (thresh / MAXCH) * W;
+      ctx.strokeStyle = "#f2c94c"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H - 14); ctx.stroke();
       ctx.fillStyle = "#f2c94c";
-      ctx.fillText(thresh + " chars", Math.min(x+8, W-160), 24);
-      const over = chars.filter(c => c > thresh).length;
+      ctx.fillText(thresh, Math.min(x + 5, W - 34), 10);
+      const over = chars.filter((c) => c > thresh).length;
       $("r-thresh").textContent = thresh;
-      $("r-pct").textContent = chars.length ? Math.round(100*over/chars.length) + "%" : "n/a";
+      $("r-pct").textContent = chars.length ? Math.round(100 * over / chars.length) + "%" : "n/a";
+      $("r-median").textContent = median ?? "n/a";
+      cv._buckets = buckets; cv._peak = peak;
     }
     (() => {
-      const cv = $("histo");
+      const cv = $("histo"), tip = $("histo-tip");
       let dragging = false;
       const toThresh = (e) => {
         const r = cv.getBoundingClientRect();
@@ -337,82 +578,145 @@
         return Math.max(50, Math.min(MAXCH, Math.round(frac * MAXCH / 10) * 10));
       };
       cv.addEventListener("pointerdown", (e) => { dragging = true; cv.setPointerCapture(e.pointerId); dragThresh = toThresh(e); drawHisto(); });
-      cv.addEventListener("pointermove", (e) => { if (dragging) { dragThresh = toThresh(e); drawHisto(); } });
+      cv.addEventListener("pointermove", (e) => {
+        if (dragging) { dragThresh = toThresh(e); drawHisto(); tip.style.display = "none"; return; }
+        const r = cv.getBoundingClientRect();
+        const i = Math.floor(((e.clientX - r.left) / r.width) * (MAXCH / BUCKET));
+        const b = cv._buckets;
+        if (!b || i < 0 || i >= b.length) { tip.style.display = "none"; return; }
+        tip.textContent = `${i * BUCKET}-${(i + 1) * BUCKET} chars · ${b[i]} speak${b[i] === 1 ? "" : "s"}`;
+        tip.style.display = "block";
+        tip.style.left = Math.min(e.clientX - r.left + 10, r.width - 130) + "px";
+        tip.style.top = "8px";
+      });
+      cv.addEventListener("pointerleave", () => { tip.style.display = "none"; });
       cv.addEventListener("pointerup", () => {
         dragging = false;
-        if (dragThresh != null) pushConfig({ max_direct_chars: dragThresh }, "saved-desk");
+        if (dragThresh != null && cfg && dragThresh !== cfg.max_direct_chars) {
+          cfg.max_direct_chars = dragThresh;
+          pushConfig({ max_direct_chars: dragThresh }, "saved-desk", "err-desk");
+        }
       });
     })();
 
-    // ---- strip inspector ----
-    function renderInspector(raw, clean) {
-      if (!raw) return;
-      $("clean-pane").textContent = clean || "(nothing survived, table fallback or empty)";
-      const kept = new Set((clean || "").toLowerCase().split(/\s+/));
-      const frag = document.createDocumentFragment();
-      for (const word of raw.split(/(\s+)/)) {
-        if (/^\s+$/.test(word) || kept.has(word.toLowerCase().replace(/[*_#>\[\]()`]/g, ""))) {
-          frag.appendChild(document.createTextNode(word));
-        } else {
-          const s = document.createElement("span");
-          s.className = "cut"; s.textContent = word;
-          frag.appendChild(s);
-        }
+    // ---------- strip inspector: token LCS diff ----------
+    function lcsKeep(rawT, cleanT) {
+      const n = rawT.length, m = cleanT.length;
+      if (n * m > 400000) {
+        const set = new Set(cleanT.map((w) => w.toLowerCase()));
+        return rawT.map((w) => set.has(w.toLowerCase().replace(/[*_#>\[\]()`]/g, "")));
       }
-      const pane = $("raw-pane");
-      pane.textContent = "";
-      pane.appendChild(frag);
+      const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+      const norm = (w) => w.toLowerCase().replace(/[*_#>\[\]()`]/g, "");
+      const a = rawT.map(norm), b = cleanT.map(norm);
+      for (let i = n - 1; i >= 0; i--)
+        for (let j = m - 1; j >= 0; j--)
+          dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+      const keep = new Array(n).fill(false);
+      let i = 0, j = 0;
+      while (i < n && j < m) {
+        if (a[i] === b[j]) { keep[i] = true; i++; j++; }
+        else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
+        else j++;
+      }
+      return keep;
+    }
+    function renderInspector(st) {
+      if (!st || !st.raw) return;
+      const rawT = st.raw.split(/(\s+)/);
+      const words = rawT.filter((w) => !/^\s*$/.test(w));
+      const keep = lcsKeep(words, (st.cleaned || "").split(/\s+/).filter(Boolean));
+      const frag = document.createDocumentFragment();
+      let wi = 0;
+      for (const tok of rawT) {
+        if (/^\s*$/.test(tok)) { frag.appendChild(document.createTextNode(tok)); continue; }
+        if (keep[wi]) frag.appendChild(document.createTextNode(tok));
+        else { const s = document.createElement("span"); s.className = "cut"; s.textContent = tok; frag.appendChild(s); }
+        wi++;
+      }
+      const rp = $("raw-pane"); rp.textContent = ""; rp.appendChild(frag);
+      $("clean-pane").textContent = st.cleaned || "(nothing survived)";
+      $("spoken-pane").textContent = st.spoken || "(silent)";
+      $("raw-count").textContent = st.raw.length + " ch";
+      $("clean-count").textContent = (st.cleaned || "").length + " ch";
+      const badges = [];
+      if (st.condense === "ok") badges.push('<span class="badge g">condensed</span>');
+      if (st.condense === "failed") badges.push('<span class="badge r">condense failed</span>');
+      if (st.condense === "not_needed") badges.push('<span class="badge b">spoken raw</span>');
+      if (st.table_skipped) badges.push('<span class="badge y">table skipped</span>');
+      $("stage-badges").innerHTML = badges.join("");
+    }
+    async function fetchStages() {
+      try { const t = await api("/log/tail?limit=1"); if (t.stages) renderInspector(t.stages); } catch {}
     }
 
-    // ---- voice lab ----
+    // ---------- voice lab ----------
+    let auditionPlaying = false;
+    let assigned = {};
+    function setLabButtons() {
+      document.querySelectorAll("#catalog .btn, [data-audition]").forEach((b) => { b.disabled = auditionPlaying; });
+      $("lab-state").textContent = auditionPlaying ? "auditioning…" : "";
+    }
     async function initVoices() {
       const v = await api("/voices");
-      for (const slot of ["claude","codex","notification"]) {
-        const sel = $("voice-"+slot);
+      assigned = v.assigned;
+      for (const slot of ["claude", "codex", "notification"]) {
+        const sel = $("voice-" + slot);
         sel.innerHTML = "";
         for (const name of v.voices) {
           const o = document.createElement("option");
-          o.value = name; o.textContent = name.replace(/_/g," ");
+          o.value = name; o.textContent = name.replace(/_/g, " ");
           sel.appendChild(o);
         }
-        sel.value = v.assigned[slot];
+        sel.value = assigned[slot];
         sel.addEventListener("change", () => {
           const voices = {};
-          for (const s of ["claude","codex","notification"]) voices[s] = $("voice-"+s).value;
-          pushConfig({ voices });
+          for (const s of ["claude", "codex", "notification"]) voices[s] = $("voice-" + s).value;
+          assigned = voices;
+          renderCatalog(v.voices);
+          pushConfig({ voices }, null, "err-lab");
         });
       }
+      renderCatalog(v.voices);
+      document.querySelectorAll("[data-audition]").forEach((b) => {
+        b.onclick = () => api("/audition", { voice: $("voice-" + b.dataset.audition).value });
+      });
+    }
+    function renderCatalog(names) {
       const cat = $("catalog");
       cat.innerHTML = "";
-      for (const name of v.voices) {
+      const slotOf = (n) => Object.entries(assigned).filter(([, v]) => v === n).map(([s]) => s);
+      const ordered = [...names].sort((a, b) => (slotOf(b).length - slotOf(a).length) || a.localeCompare(b));
+      for (const name of ordered) {
         const chip = document.createElement("span");
         chip.className = "chip";
-        chip.append(name.replace(/_/g," "));
+        const dots = document.createElement("span"); dots.className = "cdots";
+        for (const s of slotOf(name)) { const d = document.createElement("i"); d.className = "slotdot " + s; dots.appendChild(d); }
+        chip.append(name.replace(/_/g, " "), dots);
         const b = document.createElement("button");
-        b.className = "btn"; b.textContent = "▶";
+        b.className = "btn"; b.textContent = "play";
         b.onclick = () => api("/audition", { voice: name });
         chip.appendChild(b);
         cat.appendChild(chip);
       }
-      document.querySelectorAll("[data-audition]").forEach((b) => {
-        b.onclick = () => api("/audition", { voice: $("voice-"+b.dataset.audition).value });
-      });
+      setLabButtons();
     }
 
-    // ---- ledger ----
+    // ---------- ledger ----------
     function renderLedger() {
-      const speaks = entries.filter(e => e.event === "speak" && e.kind !== "audition");
-      const chars = speaks.reduce((a,e) => a + (e.spoken_chars||0), 0);
-      const mins = chars / 15 / 60;
-      $("t-talk").textContent = mins >= 1 ? mins.toFixed(1) + "m" : Math.round(mins*60) + "s";
-      $("t-speaks").textContent = speaks.length;
-      const condensed = speaks.filter(e => e.condense === "ok").length;
-      $("t-condense").textContent = speaks.length ? Math.round(100*condensed/speaks.length) + "%" : "n/a";
-      $("t-tables").textContent = entries.filter(e => e.table_skipped).length;
+      const speaks = speakEntries();
+      const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+      const today = speaks.filter((e) => e.ts * 1000 >= midnight.getTime());
+      const chars = today.reduce((a, e) => a + (e.spoken_chars || 0), 0);
+      $("t-talk").textContent = fmtDur(chars / 15);
+      $("t-speaks").textContent = today.length;
+      const condensed = today.filter((e) => e.condense === "ok").length;
+      $("t-condense").textContent = today.length ? Math.round(100 * condensed / today.length) + "%" : "n/a";
+      $("t-tables").textContent = today.filter((e) => e.table_skipped).length;
 
       const lanes = $("lanes");
       lanes.innerHTML = "";
-      const nowS = Date.now()/1000, span = 12*3600;
+      const nowS = Date.now() / 1000, span = 12 * 3600;
       const byProject = {};
       for (const e of speaks) {
         if (nowS - e.ts > span) continue;
@@ -421,17 +725,15 @@
       }
       for (const [p, list] of Object.entries(byProject)) {
         const lane = document.createElement("div"); lane.className = "lane";
-        const name = document.createElement("div"); name.className = "name"; name.textContent = p;
+        const name = document.createElement("div"); name.className = "name"; name.textContent = p; name.title = p;
         const track = document.createElement("div"); track.className = "track";
         for (const e of list) {
           const blip = document.createElement("i");
-          blip.className = "blip" +
-            (e.kind === "notification" ? " notif" : e.table_skipped ? " table" : e.condense === "ok" ? " condensed" : "");
-          const frac = 1 - (nowS - e.ts) / span;
-          const size = Math.max(4, Math.min(14, (e.spoken_chars||0) / 60));
-          blip.style.left = (frac*100) + "%";
+          blip.className = "blip" + (e.kind === "notification" ? " notif" : e.table_skipped ? " table" : e.condense === "ok" ? " condensed" : "");
+          const size = Math.max(4, Math.min(14, (e.spoken_chars || 0) / 60));
+          blip.style.left = ((1 - (nowS - e.ts) / span) * 100) + "%";
           blip.style.width = blip.style.height = size + "px";
-          blip.title = new Date(e.ts*1000).toLocaleTimeString() + " · " + (e.spoken_chars||0) + " chars";
+          blip.title = new Date(e.ts * 1000).toLocaleTimeString() + " · " + (e.spoken_chars || 0) + " chars" + (e.voice ? " · " + e.voice : "");
           track.appendChild(blip);
         }
         lane.append(name, track);
@@ -440,8 +742,8 @@
       if (!Object.keys(byProject).length) lanes.innerHTML = '<span class="hint">nothing spoken in the last 12 hours</span>';
     }
 
-    // ---- personality ----
-    $("save-prompt").onclick = () => pushConfig({ condense_prompt: $("prompt").value }, "saved-prompt");
+    // ---------- personality ----------
+    $("save-prompt").onclick = () => pushConfig({ condense_prompt: $("prompt").value }, "saved-prompt", "err-prompt");
     $("recondense").onclick = async () => {
       $("recondense").disabled = true;
       const out = await api("/recondense", {});
@@ -450,26 +752,54 @@
       $("recondense").disabled = false;
     };
 
-    $("shutup").onclick = () => api("/stop", {});
+    // ---------- shut up ----------
+    const shutUp = () => api("/stop", {});
+    $("shutup").onclick = shutUp;
+    $("now-stop").onclick = shutUp;
+    addEventListener("keydown", (e) => {
+      if (e.code !== "Space") return;
+      const t = e.target.tagName;
+      if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT" || t === "BUTTON") return;
+      e.preventDefault(); shutUp();
+    });
 
-    // ---- boot + poll ----
-    async function pollLog() {
-      try {
-        const t = await api("/log/tail?limit=300");
-        entries = t.entries || [];
-        drawHisto(); renderLedger(); renderInspector(t.last_raw, t.last_clean);
-      } catch {}
+    // ---------- SSE ----------
+    function connectSSE() {
+      const es = new EventSource("/events");
+      es.onmessage = (m) => {
+        let ev; try { ev = JSON.parse(m.data); } catch { return; }
+        if (ev.event === "hello") { setNow(ev.now); return; }
+        if (ev.event === "now") { setNow(ev.on ? ev : null); return; }
+        if (ev.event === "config") {
+          api("/config").then((c) => {
+            cfg = c.config;
+            renderScrubs(); renderQuiet(); drawHisto();
+            if (document.activeElement !== $("prompt")) $("prompt").value = cfg.condense_prompt;
+          });
+          return;
+        }
+        if (ev.ts) {
+          entries.push(ev);
+          if (entries.length > 400) entries = entries.slice(-300);
+          if (ev.event === "speak") { drawHisto(); renderLedger(); if (ev.kind === "reply") fetchStages(); }
+        }
+      };
     }
+
+    // ---------- boot ----------
     (async () => {
       const c = await api("/config");
       cfg = c.config;
-      renderKnobs(); renderQuiet();
+      buildScrubs(); renderScrubs(); renderQuiet();
       $("prompt").value = cfg.condense_prompt;
       await initVoices();
-      await pollLog();
+      const t = await api("/log/tail?limit=300");
+      entries = t.entries || [];
+      drawHisto(); renderLedger();
+      if (t.stages) renderInspector(t.stages);
       await pollHealth();
-      setInterval(pollHealth, 5000);
-      setInterval(pollLog, 6000);
+      setInterval(pollHealth, 10000);
+      connectSSE();
       addEventListener("resize", drawHisto);
     })();
   </script>
