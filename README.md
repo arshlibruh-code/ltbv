@@ -7,10 +7,8 @@
   <p><em>let there be voice</em></p>
   <p><strong>A local voice layer for coding agents.</strong></p>
   <p>
-    <a href="https://arshlibruh-code.github.io/ltbv/field-guide.html"><kbd>FIELD GUIDE</kbd></a>
-    <a href="https://arshlibruh-code.github.io/ltbv/build-packet.html"><kbd>BUILD PACKET</kbd></a>
-    <a href="#install"><kbd>INSTALL</kbd></a>
-    <a href="#controls"><kbd>CONTROLS</kbd></a>
+    <a href="https://arshlibruh-code.github.io/ltbv/field-guide.html" style="display:inline-block;padding:10px 22px;margin:4px;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;text-decoration:none;font-family:Inter,ui-sans-serif,system-ui;font-size:13px;font-weight:600">📖 Field Guide</a>
+    <a href="https://arshlibruh-code.github.io/ltbv/build-packet.html" style="display:inline-block;padding:10px 22px;margin:4px;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;text-decoration:none;font-family:Inter,ui-sans-serif,system-ui;font-size:13px;font-weight:600">📦 Build Packet</a>
   </p>
 </div>
 
