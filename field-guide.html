@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>let-there-be-voice · Field Guide</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1419;
+      --sheet: #151b22;
+      --panel: #171d24;
+      --panel-2: #1b2128;
+      --line: #313740;
+      --line-soft: #262c34;
+      --text: #e6ddd1;
+      --muted: #b0a89c;
+      --faint: #7d857f;
+      --title: #efe8de;
+      --accent: #c9c1b4;
+      --accent-2: #8f9890;
+      --warn: #d2c79a;
+      --mono: "Share Tech Mono", ui-monospace, Menlo, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    }
+
+    * { box-sizing: border-box; border-radius: 0 !important; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.06), transparent 38%),
+        radial-gradient(circle at center, rgba(255, 255, 255, 0.03), transparent 55%),
+        linear-gradient(180deg, #11161c 0%, #0d1116 100%);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 13px;
+      line-height: 1.42;
+      letter-spacing: 0;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    code, pre, .mono { font-family: var(--mono); }
+    code { color: var(--accent); font-size: 12px; }
+
+    .shell {
+      display: block;
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 28px 24px 28px;
+      position: relative;
+    }
+
+    .shell::before,
+    .shell::after {
+      content: "+";
+      position: fixed;
+      top: 18px;
+      color: #8f948c;
+      font-family: var(--mono);
+      font-size: 20px;
+      line-height: 1;
+      opacity: 0.72;
+      pointer-events: none;
+    }
+    .shell::before { left: 22px; }
+    .shell::after { right: 22px; }
+
+    .nav {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 14px;
+      align-items: start;
+      padding: 2px 0 10px;
+    }
+
+    .mark {
+      width: 28px;
+      height: 28px;
+      border: 1px solid var(--accent);
+      transform: rotate(45deg);
+      margin-top: 5px;
+    }
+
+    .brand h1 {
+      margin: 0 0 4px;
+      font-size: 13px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--title);
+    }
+
+    .brand p {
+      margin: 0;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .links {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .links a {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 34px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.01);
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .links a:hover { color: var(--title); border-color: #4a515b; background: rgba(255, 255, 255, 0.03); }
+    .links small { color: var(--faint); font-family: var(--mono); font-size: 10px; letter-spacing: 0; }
+
+    .content {
+      min-width: 0;
+      padding: 0;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: center;
+      padding: 12px 0 18px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 20px;
+    }
+
+    .pills { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 30px;
+      padding: 5px 10px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.015);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border: 1px solid var(--accent-2);
+      background: transparent;
+    }
+
+    section { scroll-margin-top: 70px; margin: 0 0 28px; }
+
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .idx { color: var(--faint); font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; }
+    h2 { margin: 0; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--title); }
+    .section-head p { margin: 0; color: var(--faint); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+
+    .card {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.005)), var(--panel);
+      overflow: hidden;
+    }
+
+    .card.pad { padding: 12px; }
+
+    .grid { display: grid; gap: 10px; }
+    .cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .metric b {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--title);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line-soft);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--faint);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      background: rgba(255,255,255,0.015);
+    }
+    tr:last-child td { border-bottom: 0; }
+    td:first-child { color: var(--title); font-weight: 600; }
+    td { color: var(--muted); }
+
+    .story {
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 10px;
+    }
+
+    .step {
+      position: relative;
+      padding: 11px 11px 11px 14px;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+    }
+
+    .step::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--accent-2);
+    }
+
+    .step b {
+      display: block;
+      margin-bottom: 4px;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--title);
+    }
+
+    .step span { color: var(--muted); font-size: 11px; }
+
+    .state {
+      position: relative;
+      padding: 14px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005)), var(--panel);
+    }
+
+    .state h3 {
+      margin: 0 0 8px;
+      color: var(--title);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .state p { margin: 0; color: var(--muted); font-size: 11px; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap: 10px;
+    }
+
+    .node {
+      position: relative;
+      min-height: 108px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .node::after {
+      content: "";
+      position: absolute;
+      right: -6px;
+      top: 50%;
+      width: 12px;
+      border-top: 1px solid var(--line);
+    }
+
+    .node:last-child::after { display: none; }
+
+    .node b {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--title);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .node span { display: block; color: var(--muted); font-size: 11px; line-height: 1.45; }
+
+    .note {
+      border-top: 1px solid var(--line);
+      padding-top: 14px;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-top: 26px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .footer::before,
+    .footer::after {
+      content: "";
+      display: block;
+      flex: 1 1 auto;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--line), transparent);
+    }
+
+    @media (max-width: 1200px) {
+      .links { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .story, .cols-2, .cols-3, .cols-4 { grid-template-columns: 1fr; }
+      .footer { flex-wrap: wrap; }
+    }
+
+    @media (max-width: 700px) {
+      .shell { padding: 18px 14px 18px; }
+      .brand { grid-template-columns: 1fr; }
+      .mark { margin-top: 0; }
+      .links { grid-template-columns: 1fr 1fr; }
+      .topbar { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; }
+      .node::after { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="nav">
+      <div class="brand">
+        <div class="mark" aria-hidden="true"></div>
+        <div>
+          <h1>let-there-be-voice</h1>
+          <p>field guide / boot to speech to silence</p>
+        </div>
+      </div>
+      <nav class="links" aria-label="Sections">
+        <a href="#one-line">One Line <small>01</small></a>
+        <a href="#journey">Journey <small>02</small></a>
+        <a href="#normal-day">Normal Day <small>03</small></a>
+        <a href="#boot">Fresh Boot <small>04</small></a>
+        <a href="#sleep">Sleep Cycle <small>05</small></a>
+        <a href="#interrupt">Interrupt <small>06</small></a>
+        <a href="#projects">Two Projects <small>07</small></a>
+        <a href="#long">Long Answers <small>08</small></a>
+        <a href="#controller">Controller <small>09</small></a>
+        <a href="#voices">Voices <small>10</small></a>
+        <a href="#kill">Shut Up <small>11</small></a>
+        <a href="#shutdown">Shutdown <small>12</small></a>
+        <a href="#test">How To Test <small>13</small></a>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="topbar">
+        <div class="pills">
+          <span class="pill"><i class="dot"></i> self-contained html</span>
+          <span class="pill">claude code + codex</span>
+          <span class="pill">hook to speaker</span>
+          <span class="pill">local first</span>
+        </div>
+      </div>
+
+      <section id="one-line">
+        <div class="section-head">
+          <span class="idx">01</span>
+          <h2>One Line</h2>
+          <p>The shortest honest version.</p>
+        </div>
+        <div class="card pad metric">
+          <b>What it is</b>
+          <span>You finish a turn in Claude Code or Codex, the final reply gets handed to a tiny local voice layer, and your Mac speaks it out loud unless you interrupt it first.</span>
+        </div>
+      </section>
+
+      <section id="journey">
+        <div class="section-head">
+          <span class="idx">02</span>
+          <h2>Journey</h2>
+          <p>From first prompt to sound.</p>
+        </div>
+        <div class="flow">
+          <div class="node"><b>1. You open an agent</b><span>Claude Code or Codex starts as usual. Nothing extra in your workflow.</span></div>
+          <div class="node"><b>2. You ask for work</b><span>The agent thinks, writes, and answers the way it already does.</span></div>
+          <div class="node"><b>3. A hook notices the end</b><span>When the turn finishes, the final reply is handed off automatically.</span></div>
+          <div class="node"><b>4. The voice layer wakes</b><span>If the speaker service is asleep, it starts quietly in the background.</span></div>
+          <div class="node"><b>5. You hear the answer</b><span>The reply becomes speech, unless it is too long or gets interrupted.</span></div>
+        </div>
+      </section>
+
+      <section id="normal-day">
+        <div class="section-head">
+          <span class="idx">03</span>
+          <h2>Normal Day</h2>
+          <p>What you usually experience.</p>
+        </div>
+        <div class="story">
+          <div class="timeline">
+            <div class="step"><b>Open Claude Code or Codex</b><span>The hook system is already attached, so the voice layer waits in the background for a completed turn.</span></div>
+            <div class="step"><b>Write a prompt</b><span>Nothing special happens yet. The agent just behaves like a normal terminal agent.</span></div>
+            <div class="step"><b>Agent finishes</b><span>The final reply is captured and sent onward. That is the only moment speech starts.</span></div>
+            <div class="step"><b>Speech plays</b><span>The reply is spoken locally. If you keep reading, the next line is already ready for the next turn.</span></div>
+          </div>
+          <div class="state">
+            <h3>What feels different</h3>
+            <p>You do not launch a separate app. You just use Claude or Codex normally, and the voice follows the conversation instead of sitting in front of it.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="boot">
+        <div class="section-head">
+          <span class="idx">04</span>
+          <h2>Fresh Boot</h2>
+          <p>Morning after a full shutdown.</p>
+        </div>
+        <div class="grid cols-2">
+          <div class="card pad metric"><b>What is gone</b><span>Nothing is running yet. The daemon is not alive, the speaker is not loaded, and the machine is just sitting there.</span></div>
+          <div class="card pad metric"><b>What starts first</b><span>The first hook that fires checks for the voice daemon, starts it if needed, and hands over the text. That first turn is the one that wakes everything up.</span></div>
+        </div>
+      </section>
+
+      <section id="sleep">
+        <div class="section-head">
+          <span class="idx">05</span>
+          <h2>Sleep Cycle</h2>
+          <p>What happens when you stop using it.</p>
+        </div>
+        <div class="grid cols-3">
+          <div class="card pad metric"><b>After a quiet stretch</b><span>The daemon exits on its own after being idle. That keeps memory use low while you are not actively talking to it.</span></div>
+          <div class="card pad metric"><b>Next turn</b><span>The next completed response wakes the daemon again. You do not manually restart anything.</span></div>
+          <div class="card pad metric"><b>Why this is okay</b><span>This is a personal utility, not a service. A short wake-up delay is better than keeping a model resident all day.</span></div>
+        </div>
+      </section>
+
+      <section id="interrupt">
+        <div class="section-head">
+          <span class="idx">06</span>
+          <h2>Interrupt</h2>
+          <p>When you change your mind mid-sentence.</p>
+        </div>
+        <div class="story">
+          <div class="timeline">
+            <div class="step"><b>You type again</b><span>The act of entering a new prompt is the stop signal. The current speech should be cut off immediately.</span></div>
+            <div class="step"><b>The old voice stops</b><span>The current playback gets killed so it does not keep talking over the new turn.</span></div>
+            <div class="step"><b>The new turn takes over</b><span>Only the latest response matters. Old speech should never come back after you have moved on.</span></div>
+          </div>
+          <div class="state">
+            <h3>What this means in practice</h3>
+            <p>If you interrupt the agent, the old speech is treated as obsolete. The stop is scoped to the project you typed in, so a second project speaking at the same time keeps talking. The system respects your attention, not stale output.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="projects">
+        <div class="section-head">
+          <span class="idx">07</span>
+          <h2>Two Projects</h2>
+          <p>When more than one agent is talking.</p>
+        </div>
+        <div class="story">
+          <div class="timeline">
+            <div class="step"><b>Two agents, two repos</b><span>Claude in one project, Codex in another, both finishing turns within minutes of each other. This is the normal evening, not the edge case.</span></div>
+            <div class="step"><b>The voice names the source</b><span>Replies get a spoken prefix: "In client-site", "From voice-layer", "Update from docs". The wording rotates so it never sounds robotic.</span></div>
+            <div class="step"><b>Interrupts stay local</b><span>Typing in one project silences only that project's speech. The other one keeps talking.</span></div>
+          </div>
+          <div class="state">
+            <h3>When prefixes appear</h3>
+            <p>Only when more than one project has spoken in the last ten minutes. Solo work stays clean and unprefixed.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="long">
+        <div class="section-head">
+          <span class="idx">08</span>
+          <h2>Long Answers</h2>
+          <p>Why everything is not spoken verbatim.</p>
+        </div>
+        <div class="grid cols-3">
+          <div class="card pad metric"><b>Short replies</b><span>These can be spoken almost directly, so the answer stays crisp and human.</span></div>
+          <div class="card pad metric"><b>Long replies</b><span>These get condensed into a two or three sentence spoken summary, so the speaker does not ramble through dense prose.</span></div>
+          <div class="card pad metric"><b>Tables</b><span>A reply with a table is never read row by row. The full reply goes to the configured summarizer first, and the voice speaks the short table summary. If that fails, it simply tells you to look.</span></div>
+        </div>
+      </section>
+
+      <section id="controller">
+        <div class="section-head">
+          <span class="idx">09</span>
+          <h2>Controller</h2>
+          <p>The dashboard, if you want to look under the hood.</p>
+        </div>
+        <div class="story">
+          <div class="timeline">
+            <div class="step"><b>Open the page</b><span>The daemon serves a control panel in your browser. It updates live as the voice speaks, no refreshing.</span></div>
+            <div class="step"><b>The stage</b><span>When a reply is spoken, you see its real waveform draw itself with a playhead sweeping along, and the text scrolling by.</span></div>
+            <div class="step"><b>The mixing desk</b><span>Drag a line across a chart of your past replies to set how long an answer can be before it gets summarized. You aim it by eye against real data.</span></div>
+            <div class="step"><b>Spotify ducking</b><span>If enabled, Spotify fades down only while TTS is actually playing, then returns to the exact volume it had before.</span></div>
+            <div class="step"><b>The shootout</b><span>Compare installed TTS engines on the same sentence, replay each clip, run blind A/B, and keep the winner without the page making decisions for you.</span></div>
+            <div class="step"><b>The ledger</b><span>Every reply is a dot on a timeline, one lane per project. Click any dot to hear it again.</span></div>
+          </div>
+          <div class="state">
+            <h3>Why it exists</h3>
+            <p>The taste knobs turned out to be the interesting part. The controller tunes them, but it never decides anything: it is a remote, and the daemon stays the brain.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="voices">
+        <div class="section-head">
+          <span class="idx">10</span>
+          <h2>Voices</h2>
+          <p>Who does the talking.</p>
+        </div>
+        <div class="grid cols-3">
+          <div class="card pad metric"><b>Engine catalogs</b><span>Speech is generated fresh every time. Pocket stays default with its catalog, and Kokoro exposes its own 54 voices when it is the active engine.</span></div>
+          <div class="card pad metric"><b>One per agent</b><span>Claude, Codex, and notifications each get their own voice, so your ear knows who is talking before you read a word.</span></div>
+          <div class="card pad metric"><b>Your own voice</b><span>Drop in an audio clip or record yourself, and the system can speak in that voice. This waits on a one-time setup with the model's makers before it wakes up.</span></div>
+        </div>
+      </section>
+
+      <section id="kill">
+        <div class="section-head">
+          <span class="idx">11</span>
+          <h2>Shut Up</h2>
+          <p>Silence that sticks.</p>
+        </div>
+        <div class="grid cols-2">
+          <div class="card pad metric"><b>SHUT UP</b><span>Press Space or drop a file named <code>.voice-disabled</code> in the repo root. The hook sees it before anything else and refuses to wake the daemon or speak. No restart, no config.</span></div>
+          <div class="card pad metric"><b>CHILL</b><span>Use this when the model is already speaking and you only want the current sentence to stop. The next completed turn can still speak.</span></div>
+        </div>
+      </section>
+
+      <section id="shutdown">
+        <div class="section-head">
+          <span class="idx">12</span>
+          <h2>Shutdown</h2>
+          <p>What happens when you close the day.</p>
+        </div>
+        <table class="card">
+          <thead>
+            <tr><th>Situation</th><th>Story</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Quit Claude Code or Codex</td><td>The hooks stop firing because there is no turn to listen to anymore.</td></tr>
+            <tr><td>Close the terminal</td><td>The voice layer has nothing to react to. It just waits until the next real session starts.</td></tr>
+            <tr><td>Restart the computer</td><td>Everything is gone again. The next time you open an agent, the same sequence starts over from the beginning.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="test">
+        <div class="section-head">
+          <span class="idx">13</span>
+          <h2>How To Test</h2>
+          <p>Simple confidence checks.</p>
+        </div>
+        <div class="grid cols-4">
+          <div class="card pad metric"><b>Health</b><span>Ask the daemon if it is alive. That only tells you the speaker service is ready, not that hooks are wired.</span></div>
+          <div class="card pad metric"><b>Manual hook</b><span>Feed a fake completed turn to the hook and listen for speech. That tests the path end to end.</span></div>
+          <div class="card pad metric"><b>Spotify duck</b><span>Enable ducking, play Spotify, trigger speech, and listen for fade down during TTS plus exact restore after. Chill should restore too.</span></div>
+          <div class="card pad metric"><b>Claude turn</b><span>Run a normal Claude Code reply and let the real Stop hook fire.</span></div>
+          <div class="card pad metric"><b>Codex turn</b><span>Run a normal Codex reply once the hook is trusted, and confirm the same behavior there.</span></div>
+          <div class="card pad metric"><b>Shut Up</b><span>Create <code>.voice-disabled</code>, run a turn, confirm silence. Delete it, confirm the voice comes back.</span></div>
+          <div class="card pad metric"><b>The log</b><span>Every spoken or skipped reply lands in <code>.voice.log</code>, with what was stripped, condensed, and prefixed.</span></div>
+        </div>
+      </section>
+
+      <section>
+        <div class="note">
+          The story is simple: agents finish, the voice speaks, naming the project when two are talking, new input stops it, and a fresh day starts the same sequence again.
+        </div>
+        <p class="footer"><span>software for one</span><span>let-there-be-voice · field guide · 2026-07-06</span><span>local first</span></p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

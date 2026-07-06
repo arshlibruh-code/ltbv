@@ -1,0 +1,954 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>let-there-be-voice · Build Packet</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #141414;
+      --panel: #1a1a1a;
+      --panel-2: #1f1f1f;
+      --line: #2b2b2b;
+      --line-soft: #242424;
+      --text: #e8e8e8;
+      --muted: #9a9a9a;
+      --faint: #6a6a6a;
+      --green: #58d68d;
+      --blue: #68a4ff;
+      --yellow: #f2c94c;
+      --red: #ff6b6b;
+      --mono: "Share Tech Mono", ui-monospace, Menlo, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    }
+
+    * { box-sizing: border-box; border-radius: 0 !important; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; }
+    code, .num, pre { font-family: var(--mono); }
+    code { color: var(--blue); font-size: 12px; }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 14px;
+      border-right: 1px solid var(--line);
+      background: #111111;
+      overflow: auto;
+    }
+
+    .brand { padding-bottom: 12px; border-bottom: 1px solid var(--line-soft); margin-bottom: 10px; }
+    .brand h1 { margin: 0 0 4px; font-size: 15px; line-height: 1.1; }
+    .brand p { margin: 0; color: var(--muted); font-size: 11px; }
+
+    .nav a {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      border: 1px solid transparent;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .nav a:hover, .nav a:focus { color: var(--text); border-color: var(--line); background: var(--panel); outline: none; }
+    .nav small { color: var(--faint); font-family: var(--mono); font-size: 10px; }
+
+    .content { min-width: 0; padding: 16px 18px 40px; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      margin: -16px -18px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(17, 17, 17, 0.95);
+      backdrop-filter: blur(8px);
+    }
+
+    .calls { display: flex; flex-wrap: wrap; gap: 6px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .dot { width: 6px; height: 6px; background: var(--green); }
+
+    .btn {
+      padding: 5px 9px;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .btn:hover { border-color: var(--blue); }
+
+    section { scroll-margin-top: 70px; margin: 0 0 22px; }
+
+    .section-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+    h2 { margin: 0; font-size: 14px; }
+    .section-head p { margin: 0; color: var(--faint); font-size: 11px; }
+    .section-head .idx { color: var(--faint); font-family: var(--mono); font-size: 11px; }
+
+    .grid { display: grid; gap: 8px; }
+    .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .grid.cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+    .card { border: 1px solid var(--line); background: var(--panel); overflow: hidden; }
+    .card.pad { padding: 10px; }
+
+    .metric b { display: block; margin-bottom: 3px; font-size: 12px; }
+    .metric span { color: var(--muted); font-size: 11px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 7px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; text-align: left; }
+    th {
+      color: var(--faint);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: #171717;
+    }
+    tr:last-child td { border-bottom: 0; }
+    td:first-child { color: var(--text); font-weight: 600; }
+    td { color: var(--muted); }
+    td .num, th .num { font-size: 11px; }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 6px;
+      background: #10281b;
+      color: var(--green);
+      font-family: var(--mono);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+    .tag.blue { background: #16233a; color: var(--blue); }
+    .tag.yellow { background: #2b250f; color: var(--yellow); }
+    .tag.red { background: #2e1416; color: var(--red); }
+
+    .flow { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 8px; }
+    .node { position: relative; min-height: 84px; padding: 10px; border: 1px solid var(--line); background: var(--panel); }
+    .node:not(:last-child)::after {
+      content: ">";
+      position: absolute;
+      right: -8px;
+      top: 34px;
+      width: 15px;
+      height: 15px;
+      border: 1px solid var(--line);
+      background: var(--bg);
+      color: var(--faint);
+      display: grid;
+      place-items: center;
+      font-family: var(--mono);
+      font-size: 9px;
+      z-index: 1;
+    }
+    .node b { display: block; margin-bottom: 4px; font-size: 12px; }
+    .node span { display: block; color: var(--muted); font-size: 11px; }
+
+    .board { display: grid; grid-template-columns: repeat(10, minmax(128px, 1fr)); gap: 8px; overflow-x: auto; }
+    .phase { min-height: 140px; padding: 10px; border: 1px solid var(--line); background: var(--panel); }
+    .phase header { display: flex; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
+    .phase h3 { margin: 0; font-size: 12px; }
+    .phase ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+
+    .code { border: 1px solid var(--line); background: #101010; overflow: hidden; }
+    .code header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--line-soft);
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    pre { margin: 0; padding: 10px; overflow: auto; color: #cfe3ff; font-size: 11px; line-height: 1.55; }
+
+    .filter-row {
+      display: grid;
+      grid-template-columns: 130px minmax(0, 1fr) 100px;
+      gap: 8px;
+      align-items: center;
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .filter-row:last-child { border-bottom: 0; }
+    .filter-row b { font-size: 12px; }
+    .filter-row span { color: var(--muted); font-size: 11px; }
+
+    .note { border-left: 2px solid var(--blue); padding: 8px 10px; background: var(--panel); color: var(--muted); font-size: 12px; }
+    .footer { margin-top: 26px; color: var(--faint); font-size: 11px; }
+
+    @media (max-width: 1060px) {
+      .shell { grid-template-columns: 1fr; }
+      .nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+      .nav .links { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+      .topbar { position: static; }
+      .grid.cols-2, .grid.cols-4, .grid.cols-5 { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; }
+      .node::after { display: none !important; }
+      .board { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
+    }
+
+    @media (max-width: 640px) {
+      .content { padding: 12px; }
+      .topbar { margin: -12px -12px 14px; }
+      .nav .links { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .board { grid-template-columns: 1fr; }
+      .filter-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="nav">
+      <div class="brand">
+        <h1>let-there-be-voice</h1>
+        <p>Source of truth. Local voice for Codex + Claude Code via Stop hooks.</p>
+      </div>
+      <nav class="links" aria-label="Sections">
+        <a href="#final-calls">Final Calls <small>01</small></a>
+        <a href="#stack">The Stack <small>01b</small></a>
+        <a href="#prd">PRD <small>02</small></a>
+        <a href="#architecture">Architecture <small>03</small></a>
+        <a href="#speech-policy">Speech Policy <small>04</small></a>
+        <a href="#invariants">Invariants <small>05</small></a>
+        <a href="#roadmap">Roadmap <small>06</small></a>
+        <a href="#wiring">Wiring <small>07</small></a>
+        <a href="#decisions">Locked Decisions <small>08</small></a>
+        <a href="#risks">Risks <small>09</small></a>
+        <a href="#field-data">Field Data <small>10</small></a>
+        <a href="#phase5">Phase 5 <small>11</small></a>
+        <a href="#phase6">Phase 6 <small>12</small></a>
+        <a href="#prompt">Codex Prompt <small>13</small></a>
+        <a href="#phase9">TTS Bench <small>14</small></a>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="topbar">
+        <div class="calls">
+          <span class="pill"><i class="dot"></i> Hooks, not PTY</span>
+          <span class="pill">Python <span class="num">3.11</span> + uv</span>
+          <span class="pill">TTS: Pocket default · Kokoro benched</span>
+          <span class="pill">Daemon <span class="num">:7333</span></span>
+          <span class="pill">macOS · local daemon · codex <span class="num">0.142.5</span></span>
+        </div>
+        <div class="actions">
+          <button class="btn" data-copy="#codex-prompt">Copy Codex prompt</button>
+        </div>
+      </div>
+
+      <section id="final-calls">
+        <div class="section-head"><span class="idx">01</span><h2>Final Calls</h2><p>Fully shipped. Phases 0-6 plus the night shift and a controller v2 live since 2026-07-06.</p></div>
+        <div class="grid cols-4">
+          <div class="card pad metric"><b>Capture</b><span>Stop hooks in both CLIs deliver <code>last_assistant_message</code> as JSON on stdin. No PTY, no ANSI parsing, ever.</span></div>
+          <div class="card pad metric"><b>TTS</b><span>Pocket stays default. Kokoro-82M is installed behind the engine registry and beat Pocket on warm RTF in the controller shootout: Pocket <span class="num">0.160</span>, Kokoro <span class="num">0.096</span>. Supertonic is still queued, not added.</span></div>
+          <div class="card pad metric"><b>Daemon</b><span>Localhost HTTP on <span class="num">7333</span>. Owns cleanup, condense, synthesis, playback. Lazy model load, exits after <span class="num">10</span> min idle.</span></div>
+          <div class="card pad metric"><b>Hook</b><span>Dumb forwarder. POSTs raw event + text to the daemon and exits in tens of ms. No network, no logic, no uv resolution: invoked as <code>.venv/bin/python</code> by absolute path.</span></div>
+        </div>
+      </section>
+
+      <section id="stack">
+        <div class="section-head"><span class="idx">01b</span><h2>The Stack</h2><p>What actually runs, and what stays local.</p></div>
+        <div class="card">
+          <table>
+            <thead><tr><th>Layer</th><th>What</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td>TTS engine</td><td>Pocket TTS default, Kokoro-82M optional</td><td>Engines sit behind a lazy <code>load / voices / synth</code> registry. Pocket remains the live default. Kokoro exposes <span class="num">54</span> voices and joins the controller shootout. Warm bench: Pocket RTF <span class="num">0.160</span>, Kokoro RTF <span class="num">0.096</span>.</td></tr>
+              <tr><td>Length limit</td><td>None from the engine</td><td>Generation is chunk-streamed, so time scales linearly with text and memory stays flat. Arbitrarily long input works; the <span class="num">400</span>-char condense cap is our taste policy, not a Pocket limit.</td></tr>
+              <tr><td>Condense</td><td>Configurable summarizer, DeepSeek by default</td><td>The one network call. Long prose goes after cleanup; table replies send the raw full response so the model can summarize the table instead of losing it. Token stays daemon-side only.</td></tr>
+              <tr><td>Playback</td><td>ffplay (<code>atempo</code>) or afplay</td><td>ffplay preferred for pitch-preserving rate; afplay fallback. Optional Spotify-only ducking can fade Spotify down during actual TTS playback, then restore the exact saved volume when playback finishes or is stopped.</td></tr>
+              <tr><td>Runtime</td><td>Python <span class="num">3.11</span> stdlib + PyTorch</td><td>Daemon is stdlib-only (HTTP, threads, queue, SSE). PyTorch rides in under Pocket. No web framework.</td></tr>
+              <tr><td>Runs local</td><td>Everything except condense</td><td>Synthesis, playback, cloning, config, the controller: all on-device. Only the optional summarizer call leaves the machine.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="prd">
+        <div class="section-head"><span class="idx">02</span><h2>One-Page PRD</h2><p>Scope narrow enough to finish.</p></div>
+        <div class="card">
+          <table>
+            <thead><tr><th>Item</th><th>Call</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>Product</td><td>Speak the final response of every Codex and Claude Code turn, automatically, via hooks. No wrapper command, agents run as normal.</td><td><span class="tag">Shipped</span></td></tr>
+              <tr><td>User flow</td><td>Zero. Hooks fire on their own. New input kills speech instantly, scoped to the project you typed in.</td><td><span class="tag">Shipped</span></td></tr>
+              <tr><td>Privacy</td><td>All synthesis and audio local. One asterisk: long responses and table replies may go to the configured summarizer for condensing.</td><td><span class="tag yellow">1 asterisk</span></td></tr>
+              <tr><td>Latency</td><td>Warm first-audio under <span class="num">1s</span>. Hook exits within <span class="num">~100ms</span>. Measured: <span class="num">0.05s</span> warm first-audio on Pocket.</td><td><span class="tag">Passed</span></td></tr>
+              <tr><td>Voice in</td><td>Not built. Hex (<code>com.kitlangton.Hex</code>, Parakeet STT) already covers it. This tool is one-way: agent to speaker.</td><td><span class="tag red">Non-goal</span></td></tr>
+              <tr><td>Non-goals</td><td>No PTY wrapper, no UI, no voice cloning, no packaging, no framework, no support for agents I don't use.</td><td><span class="tag red">Avoid</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="architecture">
+        <div class="section-head"><span class="idx">03</span><h2>Architecture</h2><p>The whole thing is a hundred-ish lines.</p></div>
+        <div class="flow">
+          <div class="node"><b>Agent CLI</b><span>Codex <span class="num">0.142.5</span> or Claude Code. Untouched, unwrapped.</span></div>
+          <div class="node"><b>Stop hook</b><span>Fires on turn end. JSON on stdin carries <code>last_assistant_message</code>.</span></div>
+          <div class="node"><b>hook.py</b><span>Dumb forwarder: POST <code>{event, text, ts}</code> to daemon, auto-start it if down, exit. Nothing else.</span></div>
+          <div class="node"><b>daemon.py</b><span>Port <span class="num">7333</span>. <code>/speak</code>, <code>/stop</code>, <code>/health</code>. Table-aware condense + cleanup + synthesis, all async. Project prefixes, <code>.voice.log</code>, lazy load, <span class="num">10</span> min idle exit.</span></div>
+          <div class="node"><b>Playback</b><span>One active + one pending, newest wins, generation IDs gate stale requests. <code>UserPromptSubmit</code> hits <code>/stop</code>, scoped to the typing project's cwd.</span></div>
+        </div>
+      </section>
+
+      <section id="speech-policy">
+        <div class="section-head"><span class="idx">04</span><h2>Speech Policy</h2><p>Where all the taste lives.</p></div>
+        <div class="card">
+          <div class="filter-row"><b>Speak</b><span>Final assistant prose under <span class="num">400</span> chars (live, tunable from the controller), after markdown strip.</span><span class="tag">Yes</span></div>
+          <div class="filter-row"><b>Never speak</b><span>Code, diffs, stack traces, raw file paths, URLs verbatim. Markdown tables are never read row by row; the raw reply goes to the summarizer for a conversational table summary.</span><span class="tag red">No</span></div>
+          <div class="filter-row"><b>Condense</b><span>Over the threshold, or whenever a table appears: <span class="num">2-3</span> natural spoken sentences via the configured summarizer, called by the daemon, never the hook. API fails: speak the first sentence or invite the user to inspect the table.</span><span class="tag yellow">AI</span></div>
+          <div class="filter-row"><b>Interrupt</b><span><code>UserPromptSubmit</code> in either CLI posts <code>/stop</code> with its cwd. Only the typing project goes quiet; another project mid-sentence keeps talking.</span><span class="tag blue">Required</span></div>
+          <div class="filter-row"><b>Queue</b><span>Per-project pending map, newest per project wins, notifications queue-jump. Concurrent projects no longer swallow each other.</span><span class="tag blue">Simple</span></div>
+          <div class="filter-row"><b>Prefix</b><span>When more than one project has spoken inside <span class="num">10</span> min, replies get a rotating spoken prefix: In X / From X / Update from X. Solo work stays unprefixed.</span><span class="tag">Live</span></div>
+        </div>
+      </section>
+
+      <section id="invariants">
+        <div class="section-head"><span class="idx">05</span><h2>Invariants</h2><p>Never break these. Everything else is the model's job.</p></div>
+        <div class="card">
+          <table>
+            <tbody>
+              <tr><td>Never block the agent</td><td>Hook exits within <span class="num">~100ms</span>: it only POSTs and dies. All cleanup, condensing, synthesis, and playback happen async in the daemon. Hook is invoked as <code>.venv/bin/python</code> by absolute path (warm uv run measured <span class="num">40-90ms</span>, too knife-edge).</td></tr>
+              <tr><td>Race-safe</td><td>Daemon start is bind-winner: both CLIs may fire at once, first to bind <span class="num">:7333</span> wins, loser just POSTs. Generation counter on utterances: a stale <code>/speak</code> can never resurrect speech after a newer <code>/stop</code>. <code>/stop</code> kills the whole <code>afplay</code> process group.</td></tr>
+              <tr><td>Silence over noise</td><td>Any failure (daemon down, API error, malformed payload) means no sound and exit <span class="num">0</span>. Errors never leak into the agent session.</td></tr>
+              <tr><td>Never speak code</td><td>No code, diffs, stack traces, or raw paths, under any condition.</td></tr>
+              <tr><td>Instant interrupt</td><td>New user input kills current speech immediately, scoped to the project it came from.</td></tr>
+              <tr><td>SHUT UP</td><td><code>.voice-disabled</code> in the repo root blocks wake-up and speech before anything else runs. Delete it to re-enable, no restart.</td></tr>
+              <tr><td>Local, one asterisk</td><td>Everything runs on-device except optional summarizer calls for long prose and table replies.</td></tr>
+              <tr><td>Stay small</td><td>No framework, no packaging, no tests beyond the bench script. A handful of files. Personal tool, not a product. Amended 2026-07-06: "no config UI" fell deliberately; <code>controller.html</code> is the sanctioned tuning surface, served by the daemon. It is a remote, not a brain: all behavior stays in <code>daemon.py</code>.</td></tr>
+              <tr><td>Secrets</td><td>The current summarizer token is read at runtime from <code>~/.claude/settings.deepseek.json</code>. Never stored or committed in this repo.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="roadmap">
+        <div class="section-head"><span class="idx">06</span><h2>Roadmap</h2><p>One commit per phase, plain messages.</p></div>
+        <div class="board">
+          <article class="phase">
+            <header><h3>0. Verify</h3><span class="tag">Done</span></header>
+            <ul>
+              <li>Payload keys already confirmed in both binaries (strings scan, 2026-07-05)</li>
+              <li>Still dump one real Stop payload per CLI: keys existing &ne; keys populated</li>
+              <li>Confirm summarizer token readable at runtime</li>
+              <li>Remove temp hooks, commit nothing</li>
+            </ul>
+          </article>
+          <article class="phase">
+            <header><h3>1. TTS Bench</h3><span class="tag">Done</span></header>
+            <ul>
+              <li>Pocket TTS default; Kokoro-82M benched; Supertonic-3 still queued</li>
+              <li>Note: pocket-tts requires PyTorch <span class="num">2.5+</span>, heaviest install of the three; count torch's RAM against the gate honestly</li>
+              <li>Warm first-audio on <span class="num">~15</span> word sentence, resident RAM</li>
+              <li>Pass: &lt;<span class="num">1s</span> and &lt;<span class="num">1GB</span>, pick by numbers, no pause</li>
+              <li>Save one sample WAV per candidate to <code>bench/</code> for after-the-fact ear test; engine is one swappable constant in <code>daemon.py</code></li>
+            </ul>
+          </article>
+          <article class="phase">
+            <header><h3>2. Daemon</h3><span class="tag">Done</span></header>
+            <ul>
+              <li><code>daemon.py</code>, localhost <span class="num">:7333</span>, bind-winner start</li>
+              <li><code>/speak</code> <code>/stop</code> <code>/health</code>, generation IDs</li>
+              <li>Cleanup + summarizer condense here, async</li>
+              <li>Lazy load, <span class="num">10</span> min idle exit, <code>/stop</code> kills afplay process group</li>
+            </ul>
+          </article>
+          <article class="phase">
+            <header><h3>3. Hook</h3><span class="tag">Done</span></header>
+            <ul>
+              <li><code>hook.py</code>, shared by both agents</li>
+              <li>POST raw <code>{event, text, ts}</code> only, no logic, no network beyond localhost</li>
+              <li>Auto-start daemon if down</li>
+              <li><code>UserPromptSubmit</code> posts <code>/stop</code></li>
+            </ul>
+          </article>
+          <article class="phase">
+            <header><h3>4. Wire</h3><span class="tag">Done</span></header>
+            <ul>
+              <li>Claude Code first: <code>settings.json</code>, verify real turn</li>
+              <li>Then Codex: <code>config.toml</code>, verify real turn</li>
+              <li>End-to-end done</li>
+            </ul>
+          </article>
+          <article class="phase">
+            <header><h3>5. Refine</h3><span class="tag">Done</span></header>
+            <ul>
+              <li>Condense threshold to <span class="num">400</span></li>
+              <li>Token-level markdown strip</li>
+              <li>Per-project pending + fully scoped stop</li>
+              <li>First-sentence fallback, cold-boot retry, Notification hook</li>
+              <li>Hygiene: wav leak, dead code, log cap, richer <code>/health</code></li>
+              <li>Full spec in section <span class="num">11</span></li>
+            </ul>
+          </article>
+          <article class="phase">
+            <header><h3>6. Controller</h3><span class="tag">Done</span></header>
+            <ul>
+              <li><code>controller.html</code> served at <code>GET /</code></li>
+              <li>Mixing Desk: threshold over live histogram</li>
+              <li>Strip Inspector: raw vs cleaned diff</li>
+              <li>Voice Lab: catalog voices, per-agent</li>
+              <li><code>config.json</code>, hot-applied</li>
+              <li>Night Shift, tasks <span class="num">12-23</span>: smoke.sh, error journal, personality, quiet hours, ledger, notify parity + priority, config armor, transcript fallback, voicectl, temperature, docs true-up</li>
+              <li>Full spec in section <span class="num">12</span></li>
+            </ul>
+          </article>
+          <article class="phase">
+            <header><h3>7. Controller v2</h3><span class="tag">Done</span></header>
+            <ul>
+              <li>Scrub-to-tune numbers replace sliders</li>
+              <li>SSE live layer + now-speaking strip</li>
+              <li>The Stage: real waveform + playhead</li>
+              <li>Replay ring: click a ledger blip to re-hear</li>
+              <li>Voice cloning: drop-a-wav or record in browser</li>
+              <li>Three-stage inspector, paintable quiet hours</li>
+            </ul>
+          </article>
+          <article class="phase">
+            <header><h3>8. Menu bar</h3><span class="tag yellow">Queued</span></header>
+            <ul>
+              <li><code>rumps</code> status-bar companion</li>
+              <li>Icon color = health, SHUT UP toggle, CHILL interrupt</li>
+              <li>launchd plist for launch-at-login</li>
+              <li>A face on the daemon, not new behavior</li>
+            </ul>
+          </article>
+          <article class="phase">
+            <header><h3>9. TTS Bench</h3><span class="tag yellow">Next</span></header>
+            <ul>
+              <li>Engine abstraction: pocket / kokoro / supertonic</li>
+              <li>Kokoro first, prove it, then Supertonic</li>
+              <li>Shootout + metrics + blind A/B/C</li>
+              <li>Per-engine voices, readiness cards</li>
+              <li>Winner picker + cleanup, remove the losers</li>
+              <li>Full spec in section <span class="num">14</span></li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section id="wiring">
+        <div class="section-head"><span class="idx">07</span><h2>Wiring</h2><p>Hook registration, both CLIs, same script.</p></div>
+        <div class="grid cols-2">
+          <div class="code">
+            <header><span>~/.claude/settings.json</span><button class="btn" data-copy="#cfg-claude">Copy</button></header>
+            <pre id="cfg-claude">{
+  "hooks": {
+    "Stop": [{ "hooks": [{
+      "type": "command",
+      "command": "$REPO/.venv/bin/python $REPO/hook.py"
+    }]}],
+    "UserPromptSubmit": [{ "hooks": [{
+      "type": "command",
+      "command": "$REPO/.venv/bin/python $REPO/hook.py"
+    }]}]
+  }
+}</pre>
+          </div>
+          <div class="code">
+            <header><span>~/.codex/config.toml</span><button class="btn" data-copy="#cfg-codex">Copy</button></header>
+            <pre id="cfg-codex">[[hooks.Stop]]
+
+[[hooks.Stop.hooks]]
+type = "command"
+command = "$REPO/.venv/bin/python $REPO/hook.py"
+
+[[hooks.UserPromptSubmit]]
+
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "$REPO/.venv/bin/python $REPO/hook.py"</pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="decisions">
+        <div class="section-head"><span class="idx">08</span><h2>Locked Decisions</h2><p>Build calls 2026-07-05, post-ship calls 2026-07-06. Not open for relitigation.</p></div>
+        <div class="card">
+          <table>
+            <thead><tr><th>Question</th><th>Decision</th><th>Why</th></tr></thead>
+            <tbody>
+              <tr><td>Capture method</td><td>Hooks only, no PTY fallback</td><td>Both CLIs ship <code>last_assistant_message</code> in the Stop payload. PTY-era rationale is dead.</td></tr>
+              <tr><td>Agent order</td><td>Claude Code first, Codex second</td><td>Older hook system, known-working examples. Codex is a config paste after.</td></tr>
+              <tr><td>Long responses</td><td>Configured summarizer condense, DeepSeek by default, in the daemon</td><td>Credits already there, Anthropic-compatible endpoint, token in <code>settings.deepseek.json</code>. Moved out of the hook after Codex review (2026-07-05): network in the hook breaks the <span class="num">100ms</span> invariant.</td></tr>
+              <tr><td>Bench order</td><td>Pocket, Kokoro, Supertonic</td><td>Revised 2026-07-06: Kokoro first after the abstraction, then Supertonic only after the Kokoro shootout works end to end.</td></tr>
+              <tr><td>Voice</td><td>Stock preset, calm, slightly fast</td><td>Simplest first. Cloning and variants later, maybe never.</td></tr>
+              <tr><td>Daemon lifecycle</td><td>Spawn-on-first-hook, <span class="num">10</span> min idle exit</td><td>A local developer machine may already be running agents and a browser. No forever-resident model.</td></tr>
+              <tr><td>Voice input</td><td>Out of scope</td><td>Hex already does local Parakeet STT.</td></tr>
+              <tr><td>TTS engine</td><td>Pocket default, Kokoro optional</td><td>Kokoro shootout shipped. Warm result on the same sentence: Pocket RTF <span class="num">0.160</span>, Kokoro RTF <span class="num">0.096</span>. Pocket remains default until a winner is picked.</td></tr>
+              <tr><td>SHUT UP</td><td><code>.voice-disabled</code> file in repo root</td><td>Zero config, greppable, no daemon restart. Hook checks it before anything else.</td></tr>
+              <tr><td>Stop scope</td><td>cwd-scoped <code>/stop</code> (2026-07-06)</td><td>Two projects run concurrently in practice; typing in one must not silence the other. <code>working_cwd</code> covers the condense/synthesis window.</td></tr>
+              <tr><td>Table replies</td><td>Raw reply to summarizer, speak the summary</td><td>Reading rows aloud is noise, but stripping tables before the model loses context. If the summarizer is unavailable, fall back to the spoken invite.</td></tr>
+              <tr><td>Condense failure</td><td>Audible failure line, superseded: first sentence + note (Phase 5)</td><td>Audible beat silent, but losing the content entirely was worse than a degraded summary.</td></tr>
+              <tr><td>Project prefix</td><td>Rotating In X / From X / Update from X when <span class="num">2+</span> projects inside <span class="num">10</span> min</td><td>The ear needs a namespace when two agents talk; rotation keeps it from sounding robotic.</td></tr>
+              <tr><td>Config UI</td><td><code>controller.html</code>, Phase 6 (2026-07-06)</td><td>The taste knobs turned out to be the product. Amends the 2026-07-05 "no config UI" invariant deliberately: the controller tunes, the daemon decides.</td></tr>
+              <tr><td>Voice</td><td>Catalog voices + per-agent assignment; cloning plumbing built, gated</td><td>The <span class="num">26</span>-voice catalog ships now. Cloning (drop-a-wav / record-in-browser) works end to end but needs the gated HF weights, so it degrades to an actionable setup message until the one-time auth step is done.</td></tr>
+              <tr><td>Playback engine</td><td>ffplay atempo, play on synthesis-complete (2026-07-06)</td><td>ffplay <code>atempo</code> changes speed without pitch-shifting (afplay <code>-r</code> shifts). True mid-synthesis PCM streaming was cut: ffplay's pipe exits early once buffered and truncates audio, and the latency win was marginal because condensing keeps replies short.</td></tr>
+              <tr><td>Live UI</td><td>SSE stream, not polling (controller v2)</td><td>One stdlib <code>text/event-stream</code> faucet pushes speak / now / wave events; the browser's <code>EventSource</code> auto-reconnects. Replaced the <span class="num">5s</span> poll so blips and the waveform land instantly.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="risks">
+        <div class="section-head"><span class="idx">09</span><h2>Risks And Kill Criteria</h2><p>Pivot, don't polish.</p></div>
+        <div class="grid cols-2">
+          <div class="card">
+            <table>
+              <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+              <tbody>
+                <tr><td><code>last_assistant_message</code> present but unpopulated at runtime</td><td>Resolved 2026-07-05: real Stop payloads dumped from both CLIs, populated.</td></tr>
+                <tr><td>Pocket TTS fails the ear test</td><td>Resolved: passed the gate and the ear, live since 2026-07-05.</td></tr>
+                <tr><td>Concurrent replies drop: single pending slot, two projects finish close together</td><td>Log-proven usage pattern: multiple repos can finish agent turns close together. Phase 5: per-project pending map.</td></tr>
+                <tr><td>Un-condensed walls of speech: <span class="num">10</span> of <span class="num">29</span> speaks were <span class="num">400-913</span> chars raw</td><td>Phase 5 drops the threshold to <span class="num">400</span> so the summarizer fires far more often.</td></tr>
+                <tr><td>First utterance after idle exit</td><td>Model reload means the first response after <span class="num">10</span> min quiet will miss the <span class="num">1s</span> target. Accepted tradeoff, not a bug.</td></tr>
+                <tr><td>Summarizer down or slow</td><td>Speak the first sentence instead. Never wait, never error.</td></tr>
+                <tr><td>RAM pressure in practice</td><td>Drop to Supertonic-3 int8, smallest footprint of the three.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card">
+            <table>
+              <thead><tr><th>Kill Criteria</th><th>Action</th></tr></thead>
+              <tbody>
+                <tr><td>No candidate passes &lt;<span class="num">1s</span> warm</td><td>macOS <code>say</code> as stopgap, revisit engines later.</td></tr>
+                <tr><td>Speech feels distracting</td><td>Speak only condensed summaries and blocked states.</td></tr>
+                <tr><td>Hook ever slows a turn</td><td>Fix immediately or disable. The agent is sacred.</td></tr>
+                <tr><td>Setup gets heavy</td><td>Cut back to daemon + hook, two files, nothing else.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="field-data">
+        <div class="section-head"><span class="idx">10</span><h2>Field Data</h2><p>First real week, from <code>.voice.log</code>, 2026-07-05/06.</p></div>
+        <div class="grid cols-5">
+          <div class="card pad metric"><b><span class="num">29</span> speaks</b><span>Across two projects, heavily interleaved.</span></div>
+          <div class="card pad metric"><b><span class="num">207</span> median chars</b><span>The typical reply is short enough to speak directly. The median is healthy.</span></div>
+          <div class="card pad metric"><b><span class="num">913</span> max raw</b><span>Longest un-condensed utterance: roughly a minute of narration. The tail is the problem.</span></div>
+          <div class="card pad metric"><b><span class="num">10/29</span> over 400</b><span>A third of all speaks were 400+ chars read verbatim because the threshold sits at <span class="num">1000</span>.</span></div>
+          <div class="card pad metric"><b><span class="num">3</span> condenses</b><span>The summarizer fired only three times, zero failures. It is underused, not unreliable.</span></div>
+        </div>
+        <div class="note" style="margin-top:8px">
+          Verdict: the pipeline works, the taste knob is mistuned. Drop the threshold, keep everything else. Multi-project use is real, so the prefix feature earns its keep and the single pending slot is now the weakest link.
+        </div>
+      </section>
+
+      <section id="phase5">
+        <div class="section-head"><span class="idx">11</span><h2>Phase 5 · Refine</h2><p>Aligned 2026-07-06 after the deep review. One-liners, ordered by payoff.</p></div>
+        <div class="card">
+          <table>
+            <thead><tr><th>#</th><th>Action</th><th>One-liner</th><th>Weight</th></tr></thead>
+            <tbody>
+              <tr><td><span class="num">1</span></td><td>Condense threshold</td><td>Drop <code>MAX_DIRECT_CHARS</code> <span class="num">1000</span> to <span class="num">400</span> so long replies get summarized instead of narrated for a minute.</td><td><span class="tag yellow">high</span></td></tr>
+              <tr><td><span class="num">2</span></td><td>Token-level stripping</td><td>Strip path/URL/extension tokens from sentences instead of deleting the whole line in <code>strip_markdown</code>.</td><td><span class="tag yellow">high</span></td></tr>
+              <tr><td><span class="num">3</span></td><td>Scoped stop, fully</td><td>On a matched stop, only clear <code>pending</code> if its cwd matches; keep the other project's queued reply alive.</td><td><span class="tag yellow">high</span></td></tr>
+              <tr><td><span class="num">4</span></td><td>Per-project pending</td><td>Replace the single slot with a tiny per-cwd map so concurrent project replies both get spoken, newest-per-project wins.</td><td><span class="tag yellow">high</span></td></tr>
+              <tr><td><span class="num">5</span></td><td>Condense fallback</td><td>On summarizer failure, speak <code>first_sentence(text)</code> plus a short failure note instead of losing the content.</td><td><span class="tag blue">med</span></td></tr>
+              <tr><td><span class="num">6</span></td><td>Cold-boot retry</td><td>In <code>hook.py</code>, retry <code>/speak</code> once after ~<span class="num">300ms</span> so the first reply after a full shutdown isn't lost.</td><td><span class="tag blue">med</span></td></tr>
+              <tr><td><span class="num">7</span></td><td>Notification hook</td><td>Add <code>Notification</code> event: speak "needs your input" so the blocked-and-waiting moment is audible.</td><td><span class="tag blue">med</span></td></tr>
+              <tr><td><span class="num">8</span></td><td>Wav leak fix</td><td>Unlink the temp wav in <code>play()</code> when the generation check bails early.</td><td><span class="tag">low</span></td></tr>
+              <tr><td><span class="num">9</span></td><td>Dead code sweep</td><td>Remove <code>kill_player</code>, <code>prepare_text</code>, unused <code>urllib.error</code> imports. Keep <code>first_sentence</code>, item 5 revives it.</td><td><span class="tag">low</span></td></tr>
+              <tr><td><span class="num">10</span></td><td>Log cap</td><td>Truncate <code>.voice.log</code> when it crosses ~<span class="num">500</span> lines.</td><td><span class="tag">low</span></td></tr>
+              <tr><td><span class="num">11</span></td><td>Richer /health</td><td>Report model-loaded, uptime, and last-spoken timestamp for one-glance debugging.</td><td><span class="tag">low</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note" style="margin-top:8px">
+          Parked, deliberately: streamed playback (play the first Pocket chunk while the rest synthesizes) and per-agent voices. Both are bigger surgery than "keep changes narrow" allows right now.
+        </div>
+      </section>
+
+      <section id="phase6">
+        <div class="section-head"><span class="idx">12</span><h2>Phase 6 · Controller</h2><p>Aligned 2026-07-06. Three panels, one file, the daemon serves it.</p></div>
+        <div class="card" style="margin-bottom:8px">
+          <table>
+            <thead><tr><th>Panel</th><th>What it does</th><th>Why it earns its place</th></tr></thead>
+            <tbody>
+              <tr><td>Mixing Desk</td><td>The condense threshold as a draggable line over a live histogram of <code>spoken_chars</code> from <code>.voice.log</code>, with a "would have condensed: N%" readout. Below it: idle exit, prefix window, summary timeout, playback rate and volume, and Spotify ducking controls.</td><td>Turns the highest-impact knobs from magic numbers into something aimed by eye, against real data.</td></tr>
+              <tr><td>Strip Inspector</td><td>Last reply raw beside what survived cleanup, deletions highlighted. Fed by the daemon keeping the last raw + cleaned pair in memory.</td><td>The cleaner silently eats sentences today. This is the permanent tuning surface for <code>strip_markdown</code>.</td></tr>
+              <tr><td>Voice Lab</td><td>Dropdown of the <span class="num">26</span> Pocket catalog voices, an editable audition text box (paste anything, hear any voice read it), per-agent voice assignment (claude / codex / notification), drop-a-wav / record-in-browser clone zone (gated on the HF weights).</td><td>The moment plumbing becomes character: the ear knows who is talking without the prefix, and TTS is testable by pasting text.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="filter-row"><b>Serving</b><span><code>GET /</code> on <span class="num">7333</span> returns <code>controller.html</code>. Same origin, no CORS, still one self-contained file.</span><span class="tag blue">Core</span></div>
+          <div class="filter-row"><b>Config</b><span><code>GET/POST /config</code> backed by <code>config.json</code> in the repo root, hot-applied, no restart. Daemon constants become defaults.</span><span class="tag blue">Core</span></div>
+          <div class="filter-row"><b>Voices</b><span><code>GET /voices</code> lists the catalog; <code>POST /audition</code> speaks one fixed sentence in a chosen voice. Voice states cached so switching stays cheap.</span><span class="tag blue">Core</span></div>
+          <div class="filter-row"><b>Ducking</b><span>Optional Spotify-only fade via <code>osascript</code>. The daemon saves Spotify's current volume, fades to <code>duck_target_volume</code> right before playback, and restores in <code>_finish()</code>. No global volume, no browser ducking, no pause/resume.</span><span class="tag blue">Core</span></div>
+          <div class="filter-row"><b>Data</b><span><code>GET /log/tail</code> returns recent log entries for the histogram plus the last raw/cleaned pair for the inspector.</span><span class="tag blue">Core</span></div>
+          <div class="filter-row"><b>Rules</b><span>House skin: dark grey, radius 0, Inter + Share Tech Mono, compact. Plain fetch, no SSE, no websockets, no framework, stdlib-only daemon side. The controller is a remote, not a brain.</span><span class="tag red">Hard</span></div>
+        </div>
+        <div class="note" style="margin-top:8px">
+          Night Shift (same run, after Phase 6 verifies): smoke.sh, error journal, personality editor, quiet hours, Ledger panel, Notification parity across both CLIs, notification queue-jump, config armor, transcript fallback, voicectl, temperature knob, docs true-up. Full spec in the prompt, tasks 12-23. Parked for real: the Stage (live waveform) and the replay ring buffer; if the itch survives a month, they get their own phase.
+        </div>
+      </section>
+
+      <section id="prompt">
+        <div class="section-head"><span class="idx">13</span><h2>Codex Prompt</h2><p>Phases 5 + 6 workhorse prompt. Paste this, it restates sections 11 and 12 as one instruction block.</p></div>
+        <div class="code">
+          <header><span>final prompt</span><button class="btn" data-copy="#codex-prompt">Copy</button></header>
+          <pre id="codex-prompt">Phase 5 refinement + Phase 6 controller for let-there-be-voice. The system is
+LIVE: daemon.py
+(Pocket TTS, localhost:7333), hook.py wired into Claude Code + Codex via Stop +
+UserPromptSubmit hooks. Do not rebuild anything, do not touch the architecture,
+no PTY wrapper, no logic back into hook.py beyond what a task below says.
+Narrow, surgical changes only.
+
+FIRST: there is good uncommitted work already in the tree (cwd-scoped /stop,
+working_cwd tracking, speak_stale guard). Keep it and commit it as its own
+commit before starting the tasks.
+
+Field data behind these changes (.voice.log, first real week): 29 speaks,
+median 207 chars, 10 speaks over 400 chars spoken raw (max 913, roughly a
+minute of narration), condense fired only 3 times with zero failures.
+
+TASKS, in order:
+
+1. Condense threshold: MAX_DIRECT_CHARS 1000 -&gt; 400 in daemon.py.
+
+2. Token-level stripping: in strip_markdown, stop deleting whole lines that
+   contain file paths, URLs, or filename.ext tokens. Remove the offending
+   token from the sentence, keep the rest of the sentence. Keep dropping
+   diff/traceback/code-fence lines whole as today.
+
+3. Scoped stop, fully: in stop_speech, when a stop matches, only clear
+   pending work whose cwd matches the stopping cwd. A stop from project A
+   must never wipe project B's queued reply. cwd=None still means stop all.
+
+4. Per-project pending: replace the single pending slot with a small dict
+   keyed by cwd (None key allowed). Newest wins PER PROJECT; the worker
+   drains all pending entries. Generation logic must stay airtight: a stale
+   speak never plays after a newer stop for that cwd. Keep it simple, this
+   is two concurrent projects in practice, not a job queue.
+
+5. Condense fallback: when the summarizer fails, speak first_sentence(text)
+   prefixed with a short note ("Summary failed, first line:") instead of
+   DEEPSEEK_FAILED_TEXT which loses the content. first_sentence already
+   exists in daemon.py, currently unused.
+
+6. Cold-boot retry: in hook.py, if the /speak POST fails, retry once after
+   ~300ms so the first reply after a full shutdown is not lost. Total worst
+   case stays well under half a second; the Stop hook can afford it. Do NOT
+   add retries to /stop.
+
+7. Notification hook: handle hook_event_name == "Notification" in hook.py:
+   POST /speak with a short fixed line like "&lt;project&gt; needs your input"
+   (project = basename of cwd). Register the Notification hook for Claude
+   Code in ~/.claude/settings.json alongside Stop, same command. Skip Codex
+   if it has no equivalent event.
+
+8. Wav leak: in play(), unlink the temp wav before returning when the
+   generation check bails early.
+
+9. Dead code: remove kill_player and prepare_text from daemon.py, and the
+   unused urllib.error imports in both files. KEEP first_sentence (task 5
+   uses it).
+
+10. Log cap: when .voice.log exceeds ~500 lines, truncate it to the most
+    recent 250 before appending.
+
+11. /health: include model_loaded (bool), uptime_s, last_spoken_ts in the
+    JSON response.
+
+PHASE 6 - CONTROLLER (only after all Phase 5 tasks are committed + verified):
+controller.html, one self-contained file in the repo, served by the daemon at
+GET / on 7333 (same origin, no CORS). House skin: dark grey, border-radius 0,
+Inter for text, Share Tech Mono for numbers, compact and tight. No framework,
+no build step, no external assets. Plain fetch, no SSE, no websockets.
+
+Daemon side, stdlib only:
+- GET / returns controller.html from disk.
+- GET /config and POST /config: MAX_DIRECT_CHARS, IDLE_EXIT_S,
+  PROJECT_WINDOW_S, DEEPSEEK_TIMEOUT_S, afplay rate + volume, and per-agent
+  voice assignments become defaults overridden by config.json in the repo
+  root, hot-applied on POST, no restart. afplay rate/volume apply via
+  afplay -r / -v at play time.
+- GET /voices: the predefined Pocket catalog names
+  (pocket_tts _ORIGINS_OF_PREDEFINED_VOICES keys).
+- POST /audition {voice}: speak one fixed sentence in that voice. Cache
+  voice states per name so switching stays cheap.
+- GET /log/tail: recent .voice.log entries for the histogram, plus the last
+  raw reply and its cleaned version (keep both in memory after each speak).
+
+Three panels, nothing more:
+1. Mixing Desk: the condense threshold as a draggable line over a histogram
+   of spoken_chars from the log, live "would have condensed: N%" readout,
+   plus sliders for idle exit, prefix window, summary timeout, playback
+   rate, volume.
+2. Strip Inspector: last reply raw beside what survived cleanup, deletions
+   highlighted. The tuning surface for strip_markdown.
+3. Voice Lab: dropdown of catalog voices with an audition button, per-agent
+   voice assignment (claude / codex / notification), and a drop-a-wav clone
+   zone rendered but DORMANT (disabled, with a one-line note) until the
+   gated HF weights are set up manually. Do NOT attempt hf auth yourself.
+
+The controller is a remote, not a brain: all behavior stays in daemon.py.
+Verify Phase 6: open the controller, drag the threshold, confirm config.json
+updates and a following long reply respects it without a daemon restart;
+audition two voices; confirm the inspector shows the raw/cleaned pair from
+the last real turn.
+
+NIGHT SHIFT (only after Phase 6 verifies; this is an unattended overnight
+run, so self-check relentlessly and never leave the tree broken):
+
+12. smoke.sh: one script in the repo running the whole verify ritual:
+    daemon health, hook smoke test from CLAUDE.md, cwd-scoped /stop, two
+    overlapping project turns, kill switch on then off. Run it after every
+    commit from here on; if it fails, fix before moving to the next task.
+
+13. Error journal: wrap the daemon worker and request handlers so any
+    exception lands in .voice.log as {"event":"error","trace":...}. Never
+    crash the daemon for one bad speak; log and continue.
+
+14. Personality editor: move the summarizer condense system prompt into
+    config.json (default = the current prompt text), expose it via /config,
+    add a textarea panel in the controller with a "re-condense last long
+    reply" button so a prompt change is instantly hearable.
+
+15. Quiet hours: config.json gains quiet_hours {"start":"HH:MM",
+    "end":"HH:MM"} (absent = disabled). Inside the window /speak is
+    accepted, logged as {"event":"quiet_skip"}, and stays silent. The kill
+    switch and /stop are unaffected. Expose the window in the Mixing Desk.
+
+16. Ledger panel: a fourth read-only controller panel from .voice.log:
+    talk-time today (estimate from spoken_chars at ~15 chars/sec), condense
+    rate, table skips, per-project utterance lanes over time. No new
+    endpoint beyond /log/tail growing a limit param.
+
+17. Notification parity, both CLIs: first verify the Claude Code
+    Notification hook from task 7 actually fires on a real permission
+    prompt and speaks. Then investigate whether Codex CLI has an equivalent
+    event (notify config, hooks); wire it identically if yes. Record what
+    you found either way in the implementation notes.
+
+18. Notification priority: a "needs your input" line queue-jumps. It never
+    waits behind a long reply mid-playback in another project: it speaks
+    next, ahead of any pending replies. Do not cut off an utterance that is
+    already playing for the SAME project the notification belongs to;
+    interrupt other-project playback only if implementation stays simple,
+    otherwise just jump the queue.
+
+19. Config armor: a malformed or hand-mangled config.json must never
+    silence the system. Validate on load and on POST /config; on any bad
+    field fall back to that field's default, log
+    {"event":"config_error","field":...}, keep speaking. The failure mode
+    of a bad write is defaults, never mystery silence.
+
+20. Transcript fallback: on Stop, if last_assistant_message is empty but
+    transcript_path is present, parse the transcript for the last
+    assistant entry and speak that. This was the original risk-table
+    fallback, never built. Log {"event":"transcript_fallback"} when used.
+
+21. voicectl: a tiny ./voice shell script in the repo: status (pretty
+    /health), chill (stop current speech), shutup (create .voice-disabled), unshutup (remove it),
+    say "text" (POST /speak). Stdlib/curl-level simplicity, no deps.
+
+22. Temperature knob: expose Pocket's TTS temperature (default 0.7) in
+    config.json and as a Mixing Desk slider. It is passed at generation
+    time; confirm pocket_tts generate_audio_stream accepts it and wire it
+    through, else note the limitation in the implementation notes and skip.
+
+23. Docs true-up, last task of the night: update CLAUDE.md to post-run
+    reality (endpoints, config.json, controller, smoke.sh, voicectl, quiet
+    hours), and stamp the running git rev into /health so "which daemon
+    build is running" is never a guess.
+
+End the pass by writing short implementation notes: what landed, what failed,
+what you skipped and why, plus anything surprising in the logs. Plain prose,
+short.
+
+INVARIANTS, never break these ("no config UI" was amended 2026-07-06 to
+permit exactly this controller, nothing more):
+- Hook exits fast and never blocks the agent turn; silence over noise: any
+  failure means no sound and exit 0, never leak errors into the session.
+- Never speak code, diffs, stack traces, or raw file paths.
+- New input in a project kills that project's speech instantly; stale speech
+  never resurrects after an interrupt.
+- SHUT UP: .voice-disabled in the repo root blocks everything.
+- Everything local except the optional summarizer condense call; only the daemon
+  touches the network or the token.
+- Keep it small: no framework, no packaging, no tests beyond the bench
+  script. The controller is the only UI, and it stays one file. Personal
+  tool, not a product.
+
+VERIFY when done: run the hook smoke test from CLAUDE.md, then one real
+Claude Code turn and one real Codex turn, then two overlapping turns from two
+different project directories to prove per-project pending and scoped stop
+actually behave.
+
+Commits: the pre-existing scoped-stop work first, then one commit per task or
+sensible small groups, plain messages. Phase 6 lands as its own commit(s)
+only after Phase 5 is verified end to end, and the Night Shift only after
+Phase 6 does. Run smoke.sh before every commit once it exists.</pre>
+        </div>
+      </section>
+
+      <section id="phase9">
+        <div class="section-head"><span class="idx">14</span><h2>Phase 9 · TTS Shootout Bench</h2><p>Partly shipped 2026-07-06. Pocket default, Kokoro wired and proven, Supertonic still queued.</p></div>
+        <div class="card" style="margin-bottom:8px">
+          <table>
+            <thead><tr><th>#</th><th>Feature</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><span class="num">0</span></td><td>Engine abstraction</td><td><span class="tag">Shipped</span> Uniform lazy engine registry. Pocket behavior preserved; Kokoro slots in as a sibling.</td></tr>
+              <tr><td><span class="num">2</span></td><td>Shootout mode</td><td><span class="tag">Shipped</span> Paste one line, every installed engine synthesizes it, play each clip on demand through the replay ring.</td></tr>
+              <tr><td><span class="num">3</span></td><td>Metrics scoreboard</td><td><span class="tag">Shipped</span> Daemon returns RTF, TTFA, synth time, duration, RSS, and clip id per engine.</td></tr>
+              <tr><td><span class="num">5</span></td><td>Blind A/B/C</td><td><span class="tag">Shipped</span> Clips randomize into unlabeled buttons, then reveal.</td></tr>
+              <tr><td><span class="num">6</span></td><td>Per-engine voices</td><td><span class="tag">Shipped</span> Voice Lab follows the active engine catalog: Pocket <span class="num">26</span>, Kokoro <span class="num">54</span>.</td></tr>
+              <tr><td><span class="num">8</span></td><td>Winner + cleanup</td><td><span class="tag">Shipped</span> "Keep" sets the default and prints cleanup commands, without running removals.</td></tr>
+              <tr><td><span class="num">9</span></td><td>Readiness cards</td><td><span class="tag">Shipped</span> Per engine installed / loaded / RAM cards, with install commands when missing.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="filter-row"><b>Order</b><span>Kokoro first: land the abstraction, wire Kokoro, prove it against Pocket in the shootout. Only then add Supertonic. Never both at once.</span><span class="tag yellow">Sequence</span></div>
+          <div class="filter-row"><b>Endpoints</b><span><code>GET /engines</code> (installed / loaded / ram), <code>POST /engine</code> (set active), <code>POST /bench {text}</code> (synth on all installed, return clips + metrics). Audition and speak gain an optional engine.</span><span class="tag blue">Core</span></div>
+          <div class="filter-row"><b>Metric</b><span>Real-time factor is the gate: RTF below <span class="num">1.0</span> is faster than realtime. Warm measured on 2026-07-06: Pocket <span class="num">0.160</span>, Kokoro <span class="num">0.096</span>. First Kokoro run included model download/load and was not the warm gate.</span><span class="tag blue">Core</span></div>
+          <div class="filter-row"><b>Rules</b><span>The live voice path never breaks: Pocket stays default until a winner is picked. Engines lazy-load. Stdlib daemon plus the engine packages, nothing more. Controller stays a remote.</span><span class="tag red">Hard</span></div>
+        </div>
+        <div class="note" style="margin-top:8px">
+          Parked from the menu: waveform stack, bench log, latency race, language presets, tradeoff cards. Add only if the itch survives the first shootout.
+        </div>
+      </section>
+
+      <section id="phase9-prompt">
+        <div class="section-head"><span class="idx">14b</span><h2>Phase 9 Prompt</h2><p>Paste this to the workhorse. Restates section 14 as one instruction block.</p></div>
+        <div class="code">
+          <header><span>tts bench prompt</span><button class="btn" data-copy="#tts-prompt">Copy</button></header>
+          <pre id="tts-prompt">Phase 9 for let-there-be-voice: turn the controller into a TTS shootout bench
+so I can compare three engines, learn, pick the best, and remove the losers.
+The system is LIVE and must keep working throughout. Read build-packet.html
+section 14 for the full spec. Do not break the live voice path: Pocket stays
+the default engine until I pick a winner in the UI.
+
+FOUNDATION FIRST (task 0, its own commit):
+Refactor synthesis behind an engine abstraction. Today ENGINE = "pocket" and
+speak() calls Pocket directly. Introduce a small registry where each engine
+exposes the same interface: load() (lazy), voices() -> list of names,
+synth(text, voice) -> yields int16 PCM chunks at the engine's sample_rate.
+Move today's Pocket code behind it UNCHANGED in behavior; the live path,
+smoke.sh, cloning, and the controller must all still pass exactly as now.
+config gains "engine" (default "pocket") validated against installed engines.
+
+KOKORO SECOND (prove it before touching Supertonic):
+Add Kokoro-82M as an engine (kokoro pip package, Apache-2.0, PyTorch, happy on
+MPS). Expose its ~54 voices via voices(). Synth to int16 PCM chunks. If the
+package is not installed, the engine reports "not installed" with the pip/uv
+command, never crashes. Once Kokoro synthesizes and plays through the existing
+pipeline, wire the controller bench (below) and stop. Do NOT add Supertonic in
+the same run.
+
+CONTROLLER BENCH (features 2,3,5,6,8,9 from section 14):
+- GET /engines: [{name, installed, loaded, rss_mb}]. POST /engine {name}: set
+  active, hot-applied, saved to config. POST /bench {text, voice?}: synthesize
+  the text on every installed engine, return per-engine {clip_id, rtf,
+  ttfa_s, synth_s, duration_s, rss_mb}. Audition/speak take an optional engine.
+- Readiness cards (9): per-engine installed / loaded / RAM, install command
+  when missing.
+- Shootout (2): a text box, a "compare" button, plays each engine's clip on
+  demand, reuse the replay ring for the clips.
+- Metrics scoreboard (3): the /bench numbers in a live per-engine table. RTF =
+  synth_s / duration_s, measured in the daemon (resource.getrusage for RAM,
+  perf_counter for timing). RTF below 1.0 = faster than realtime.
+- Blind A/B/C (5): play the three clips unlabeled in random order, let me
+  score each, then reveal which engine was which.
+- Per-engine voices (6): the Voice Lab dropdowns and catalog reflect the
+  ACTIVE engine's voices, not a shared list.
+- Winner + cleanup (8): a "keep this engine" control that sets the default and
+  prints the uninstall / file-removal steps for the other engines. Do NOT run
+  the removal yourself; just show the commands.
+
+SUPERTONIC LAST (only after the Kokoro shootout works end to end):
+Add Supertonic-3 via sherpa-onnx as a third engine behind the same interface,
+then it joins the shootout automatically.
+
+INVARIANTS: the live voice path never regresses; Pocket default until I pick;
+engines lazy-load and idle-exit as today; stdlib daemon plus the engine
+packages, no web framework; controller stays one self-contained file and a
+remote, not a brain; run smoke.sh before every commit and keep it green.
+
+VERIFY: smoke.sh green, one real Claude turn still speaks via Pocket, then a
+bench run comparing Pocket vs Kokoro on the same sentence with real RTF
+numbers. One commit per meaningful step, plain messages. When done, update
+CLAUDE.md and this packet per the docs-sweep note.</pre>
+        </div>
+      </section>
+
+      <div class="note">
+        Mantra: the build was verify the payload, bench the voice, two small files, two config pastes. The refine is one knob, one regex, one dict, and hygiene. Everything else is ornament.
+      </div>
+
+      <p class="footer">let-there-be-voice · build packet v6 · 2026-07-06 · phases 0-7 shipped, Kokoro shootout shipped, Supertonic queued · single self-contained file, no external assets</p>
+    </main>
+  </div>
+
+  <script>
+    const copyText = async (text) => {
+      try {
+        await navigator.clipboard.writeText(text.trim());
+      } catch {
+        const area = document.createElement("textarea");
+        area.value = text.trim();
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        area.remove();
+      }
+    };
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const node = document.querySelector(button.dataset.copy);
+        if (!node) return;
+        await copyText(node.textContent);
+        const old = button.textContent;
+        button.textContent = "Copied";
+        setTimeout(() => { button.textContent = old; }, 900);
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+.venv/
+.uv-cache/
+__pycache__/
+*.pyc
+.DS_Store
+.voice.log
+.voice-disabled
+config.json
+bench/
+.clips/
+voices/
