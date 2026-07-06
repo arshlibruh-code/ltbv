@@ -22,7 +22,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 HOST = "127.0.0.1"
 PORT = 7333
-ENGINE = "pocket"
 DEEPSEEK_SETTINGS = Path.home() / ".claude" / "settings.deepseek.json"
 TABLE_FALLBACK_TEXT = (
     "I made a table for this, but I won't read the whole thing out loud. "
@@ -58,6 +57,84 @@ CATALOG_VOICES = (
 )
 
 
+class TTSEngine:
+    name = ""
+    sample_rate = SAMPLE_RATE
+    install_command = ""
+
+    def installed(self) -> bool:
+        return True
+
+    def loaded(self) -> bool:
+        return False
+
+    def load(self):
+        raise NotImplementedError
+
+    def voices(self) -> list:
+        raise NotImplementedError
+
+    def synth(self, text: str, voice: str):
+        raise NotImplementedError
+
+
+class PocketEngine(TTSEngine):
+    name = "pocket"
+    sample_rate = SAMPLE_RATE
+    install_command = "uv add pocket-tts"
+
+    def __init__(self):
+        self.model = None
+        self.voice_states = {}
+
+    def loaded(self) -> bool:
+        return self.model is not None
+
+    def load(self):
+        if self.model is None:
+            from pocket_tts.models.tts_model import TTSModel
+
+            self.model = TTSModel.load_model(
+                language="english", temp=float(config["temperature"])
+            )
+            self.sample_rate = self.model.sample_rate
+        return self.model
+
+    def voices(self) -> list:
+        return list(CATALOG_VOICES) + [
+            v for v in custom_voices() if v not in CATALOG_VOICES
+        ]
+
+    def voice_source(self, name: str) -> str:
+        custom = VOICES_DIR / f"{name}.wav"
+        return str(custom) if custom.exists() else name
+
+    def voice_state_for(self, name: str):
+        model = self.load()
+        if name not in self.voice_states:
+            self.voice_states[name] = model.get_state_for_audio_prompt(
+                self.voice_source(name)
+            )
+        return self.voice_states[name]
+
+    def synth(self, text: str, voice: str):
+        model = self.load()
+        voice_state = self.voice_state_for(voice)
+        yield from model.generate_audio_stream(
+            model_state=voice_state, text_to_generate=text
+        )
+
+    def reset(self) -> None:
+        self.model = None
+        self.voice_states = {}
+
+    def drop_voice(self, name: str) -> None:
+        self.voice_states.pop(name, None)
+
+
+ENGINES = {"pocket": PocketEngine()}
+
+
 def custom_voices() -> list:
     try:
         return sorted(p.stem for p in VOICES_DIR.glob("*.wav"))
@@ -66,14 +143,11 @@ def custom_voices() -> list:
 
 
 def all_voices() -> list:
-    return list(CATALOG_VOICES) + [v for v in custom_voices() if v not in CATALOG_VOICES]
+    return active_engine().voices()
 
-
-def voice_source(name: str) -> str:
-    custom = VOICES_DIR / f"{name}.wav"
-    return str(custom) if custom.exists() else name
 
 CONFIG_SPEC = {
+    "engine": {"default": "pocket", "kind": "engine"},
     "max_direct_chars": {"default": 400, "kind": "int", "min": 50, "max": 5000},
     "idle_exit_s": {"default": 600, "kind": "int", "min": 60, "max": 86400},
     "project_window_s": {"default": 600, "kind": "int", "min": 30, "max": 7200},
@@ -125,8 +199,12 @@ clip_ring = OrderedDict()
 
 config = {key: spec["default"] for key, spec in CONFIG_SPEC.items()}
 
-tts_model = None
-tts_voice_states = {}
+def active_engine_name() -> str:
+    return config.get("engine", "pocket")
+
+
+def active_engine() -> TTSEngine:
+    return ENGINES[active_engine_name()]
 
 
 def now() -> float:
@@ -224,6 +302,11 @@ def validate_field(key: str, value):
                 raise ValueError(key)
             merged[slot] = name
         return merged
+    if kind == "engine":
+        value = str(value).strip()
+        if value not in ENGINES:
+            raise ValueError(key)
+        return value
     raise ValueError(key)
 
 
@@ -257,7 +340,7 @@ def save_config() -> None:
 
 
 def apply_config(data: dict) -> tuple[dict, list]:
-    global config, tts_model, tts_voice_states
+    global config
     errors = []
     new = dict(config)
     drop_model = False
@@ -277,8 +360,9 @@ def apply_config(data: dict) -> tuple[dict, list]:
     with state_lock:
         config = new
         if drop_model:
-            tts_model = None
-            tts_voice_states = {}
+            engine = ENGINES.get("pocket")
+            if hasattr(engine, "reset"):
+                engine.reset()
     save_config()
     return new, errors
 
@@ -481,24 +565,6 @@ def prefix_for_project(project: str | None) -> tuple[str, bool]:
     return template.format(project=project), True
 
 
-def load_pocket():
-    global tts_model
-    if tts_model is None:
-        from pocket_tts.models.tts_model import TTSModel
-
-        tts_model = TTSModel.load_model(
-            language="english", temp=float(config["temperature"])
-        )
-    return tts_model
-
-
-def voice_state_for(name: str):
-    model = load_pocket()
-    if name not in tts_voice_states:
-        tts_voice_states[name] = model.get_state_for_audio_prompt(voice_source(name))
-    return tts_voice_states[name]
-
-
 def voice_for_job(job: dict) -> str:
     if job.get("voice"):
         return job["voice"]
@@ -571,7 +637,7 @@ def write_wav(path: Path, pcm_frames: list) -> None:
     with wave.open(str(path), "wb") as wav:
         wav.setnchannels(1)
         wav.setsampwidth(2)
-        wav.setframerate(SAMPLE_RATE)
+        wav.setframerate(active_engine().sample_rate)
         for pcm in pcm_frames:
             wav.writeframes(pcm)
 
@@ -581,18 +647,13 @@ def speak(text: str, gen: int, key, cwd: str | None, voice: str, kind: str) -> s
     Ships a waveform + duration for the Stage and keeps the clip for replay.
     Returns a clip id, or None if the job went stale or synthesis failed."""
     global active_player, active_cwd, last_spoken_ts, now_speaking
-    if ENGINE != "pocket":
-        return None
-    model = load_pocket()
-    voice_state = voice_state_for(voice)
+    engine = active_engine()
 
     pcm_frames = []
     peaks = []
     total_samples = 0
     try:
-        for chunk in model.generate_audio_stream(
-            model_state=voice_state, text_to_generate=text
-        ):
+        for chunk in engine.synth(text, voice):
             with state_lock:
                 if is_stale(key, gen):
                     return None
@@ -613,7 +674,9 @@ def speak(text: str, gen: int, key, cwd: str | None, voice: str, kind: str) -> s
     except Exception:
         log_error("ring_write")
 
-    duration = total_samples / SAMPLE_RATE / min(2.0, max(0.5, float(config["rate"])))
+    duration = total_samples / engine.sample_rate / min(
+        2.0, max(0.5, float(config["rate"]))
+    )
 
     with state_lock:
         if is_stale(key, gen):
@@ -687,14 +750,14 @@ def clone_voice(name: str, audio_b64: str) -> tuple[bool, str]:
         if conv.returncode != 0 or not dst.exists():
             return False, "could not decode that audio file"
         try:
-            load_pocket().get_state_for_audio_prompt(str(dst))
+            ENGINES["pocket"].load().get_state_for_audio_prompt(str(dst))
         except Exception as exc:
             dst.unlink(missing_ok=True)
             msg = str(exc)
             if "voice cloning" in msg or "download the weights" in msg:
                 return False, "cloning locked: accept terms at huggingface.co/kyutai/pocket-tts and run hf auth login"
             return False, "could not build a voice from that audio"
-        tts_voice_states.pop(name, None)
+        ENGINES["pocket"].drop_voice(name)
         return True, name
     finally:
         src.unlink(missing_ok=True)
@@ -705,7 +768,7 @@ def delete_voice(name: str) -> bool:
     if name in CATALOG_VOICES or not dst.exists():
         return False
     dst.unlink(missing_ok=True)
-    tts_voice_states.pop(name, None)
+    ENGINES["pocket"].drop_voice(name)
     defaults = CONFIG_SPEC["voices"]["default"]
     for slot, voice in list(config["voices"].items()):
         if voice == name:
@@ -918,8 +981,8 @@ class Handler(BaseHTTPRequestHandler):
                     200,
                     {
                         "ok": True,
-                        "engine": ENGINE,
-                        "model_loaded": tts_model is not None,
+                        "engine": active_engine_name(),
+                        "model_loaded": active_engine().loaded(),
                         "uptime_s": round(now() - started_at, 1),
                         "last_spoken_ts": last_spoken_ts,
                         "now_speaking": now_speaking,
