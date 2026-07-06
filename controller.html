@@ -226,6 +226,9 @@
       background: var(--ink); border: 1px solid var(--line-soft); color: var(--text); padding: 9px;
     }
     .row-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+    .style-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+    .style-row span { color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .style-row .btn.on { border-color: var(--green); color: var(--green); }
     #recondense-out { margin-top: 8px; display: none; }
     .hint { color: var(--faint); font-size: 10px; }
     kbd { font-family: var(--mono); font-size: 9px; border: 1px solid var(--line); padding: 0 4px; color: var(--muted); }
@@ -394,6 +397,12 @@
           <header><h2>Personality</h2><span class="saved" id="saved-prompt">saved</span></header>
           <div class="body">
             <textarea id="prompt" spellcheck="false"></textarea>
+            <div class="style-row" id="speech-style">
+              <span>summary style</span>
+              <button class="btn" data-style="clean">clean</button>
+              <button class="btn" data-style="natural">natural</button>
+              <button class="btn" data-style="radio">radio</button>
+            </div>
             <div class="row-actions">
               <button class="btn" id="save-prompt">save prompt</button>
               <button class="btn" id="recondense">re-condense last reply</button>
@@ -441,7 +450,7 @@
           if (errId) $(errId).textContent = "";
           if (savedId) flash(savedId);
         }
-        renderScrubs(); renderQuiet(); drawHisto();
+        renderScrubs(); renderQuiet(); renderSpeechStyle(); drawHisto();
       }, 300);
     }
 
@@ -1031,6 +1040,19 @@
     }
 
     // ---------- personality ----------
+    function renderSpeechStyle() {
+      if (!cfg) return;
+      document.querySelectorAll("#speech-style button").forEach((b) => {
+        b.classList.toggle("on", b.dataset.style === cfg.speech_style);
+      });
+    }
+    document.querySelectorAll("#speech-style button").forEach((b) => {
+      b.onclick = () => {
+        cfg.speech_style = b.dataset.style;
+        renderSpeechStyle();
+        pushConfig({ speech_style: cfg.speech_style }, "saved-prompt", "err-prompt");
+      };
+    });
     $("save-prompt").onclick = () => pushConfig({ condense_prompt: $("prompt").value }, "saved-prompt", "err-prompt");
     $("duck-toggle").onclick = () => {
       cfg.ducking_enabled = !cfg.ducking_enabled;
@@ -1094,7 +1116,7 @@
         if (ev.event === "config") {
           api("/config").then((c) => {
             cfg = c.config;
-            renderScrubs(); renderQuiet(); drawHisto();
+            renderScrubs(); renderQuiet(); renderSpeechStyle(); drawHisto();
             if (document.activeElement !== $("prompt")) $("prompt").value = cfg.condense_prompt;
           });
           initEngines().catch(() => {});
@@ -1113,7 +1135,7 @@
     (async () => {
       const c = await api("/config");
       cfg = c.config;
-      buildScrubs(); renderScrubs(); renderQuiet();
+      buildScrubs(); renderScrubs(); renderQuiet(); renderSpeechStyle();
       $("prompt").value = cfg.condense_prompt;
       await initEngines();
       await initVoices();
