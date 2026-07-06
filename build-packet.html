@@ -182,7 +182,7 @@
     .node b { display: block; margin-bottom: 4px; font-size: 12px; }
     .node span { display: block; color: var(--muted); font-size: 11px; }
 
-    .board { display: grid; grid-template-columns: repeat(8, minmax(130px, 1fr)); gap: 8px; overflow-x: auto; }
+    .board { display: grid; grid-template-columns: repeat(10, minmax(128px, 1fr)); gap: 8px; overflow-x: auto; }
     .phase { min-height: 140px; padding: 10px; border: 1px solid var(--line); background: var(--panel); }
     .phase header { display: flex; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
     .phase h3 { margin: 0; font-size: 12px; }
@@ -260,6 +260,7 @@
         <a href="#phase5">Phase 5 <small>11</small></a>
         <a href="#phase6">Phase 6 <small>12</small></a>
         <a href="#prompt">Codex Prompt <small>13</small></a>
+        <a href="#phase9">TTS Bench <small>14</small></a>
       </nav>
     </aside>
 
@@ -452,6 +453,17 @@
               <li>Icon color = health, mute toggle, shut up</li>
               <li>launchd plist for launch-at-login</li>
               <li>A face on the daemon, not new behavior</li>
+            </ul>
+          </article>
+          <article class="phase">
+            <header><h3>9. TTS Bench</h3><span class="tag yellow">Next</span></header>
+            <ul>
+              <li>Engine abstraction: pocket / kokoro / supertonic</li>
+              <li>Kokoro first, prove it, then Supertonic</li>
+              <li>Shootout + metrics + blind A/B/C</li>
+              <li>Per-engine voices, readiness cards</li>
+              <li>Winner picker + cleanup, remove the losers</li>
+              <li>Full spec in section <span class="num">14</span></li>
             </ul>
           </article>
         </div>
@@ -814,11 +826,101 @@ Phase 6 does. Run smoke.sh before every commit once it exists.</pre>
         </div>
       </section>
 
+      <section id="phase9">
+        <div class="section-head"><span class="idx">14</span><h2>Phase 9 · TTS Shootout Bench</h2><p>Aligned 2026-07-06. Turn the controller into a three-engine bench, learn, pick one, delete the rest.</p></div>
+        <div class="card" style="margin-bottom:8px">
+          <table>
+            <thead><tr><th>#</th><th>Feature</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><span class="num">0</span></td><td>Engine abstraction</td><td>Uniform <code>load / voices / synth</code> interface behind the current <code>ENGINE</code> constant. Pocket keeps working byte-identical; Kokoro and Supertonic slot in as siblings. Required foundation for everything else.</td></tr>
+              <tr><td><span class="num">2</span></td><td>Shootout mode</td><td>Paste one line, every installed engine synthesizes it, play each on demand. Same words, three voices, ears decide.</td></tr>
+              <tr><td><span class="num">3</span></td><td>Metrics scoreboard</td><td>Per synth: real-time factor (synth time / audio duration), time-to-first-audio, full synth time, RAM delta, clip length. Live per-engine table.</td></tr>
+              <tr><td><span class="num">5</span></td><td>Blind A/B/C</td><td>Play the three clips unlabeled in random order, score each, then reveal. Kills brand bias.</td></tr>
+              <tr><td><span class="num">6</span></td><td>Per-engine voices</td><td>Voice Lab shows the active engine's own catalog (Pocket <span class="num">26</span>, Kokoro <span class="num">54</span>, Supertonic multilingual).</td></tr>
+              <tr><td><span class="num">8</span></td><td>Winner + cleanup</td><td>"Keep this one" sets the default engine and prints the removal steps for the losers. The stated endgame, one click.</td></tr>
+              <tr><td><span class="num">9</span></td><td>Readiness cards</td><td>Per engine: installed / model-loaded / RAM, with the install command when missing. No silent failures.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="filter-row"><b>Order</b><span>Kokoro first: land the abstraction, wire Kokoro, prove it against Pocket in the shootout. Only then add Supertonic. Never both at once.</span><span class="tag yellow">Sequence</span></div>
+          <div class="filter-row"><b>Endpoints</b><span><code>GET /engines</code> (installed / loaded / ram), <code>POST /engine</code> (set active), <code>POST /bench {text}</code> (synth on all installed, return clips + metrics). Audition and speak gain an optional engine.</span><span class="tag blue">Core</span></div>
+          <div class="filter-row"><b>Metric</b><span>Real-time factor is the gate: RTF below <span class="num">1.0</span> is faster than realtime. Pocket sits near <span class="num">0.17</span>. Measure honestly in the daemon, not the browser.</span><span class="tag blue">Core</span></div>
+          <div class="filter-row"><b>Rules</b><span>The live voice path never breaks: Pocket stays default until Arshad picks a winner. Engines lazy-load. Stdlib daemon plus the engine packages, nothing more. Controller stays a remote.</span><span class="tag red">Hard</span></div>
+        </div>
+        <div class="note" style="margin-top:8px">
+          Parked from the menu: waveform stack, bench log, latency race, language presets, tradeoff cards. Add only if the itch survives the first shootout.
+        </div>
+      </section>
+
+      <section id="phase9-prompt">
+        <div class="section-head"><span class="idx">14b</span><h2>Phase 9 Prompt</h2><p>Paste this to the workhorse. Restates section 14 as one instruction block.</p></div>
+        <div class="code">
+          <header><span>tts bench prompt</span><button class="btn" data-copy="#tts-prompt">Copy</button></header>
+          <pre id="tts-prompt">Phase 9 for let-there-be-voice: turn the controller into a TTS shootout bench
+so I can compare three engines, learn, pick the best, and remove the losers.
+The system is LIVE and must keep working throughout. Read build-packet.html
+section 14 for the full spec. Do not break the live voice path: Pocket stays
+the default engine until I pick a winner in the UI.
+
+FOUNDATION FIRST (task 0, its own commit):
+Refactor synthesis behind an engine abstraction. Today ENGINE = "pocket" and
+speak() calls Pocket directly. Introduce a small registry where each engine
+exposes the same interface: load() (lazy), voices() -> list of names,
+synth(text, voice) -> yields int16 PCM chunks at the engine's sample_rate.
+Move today's Pocket code behind it UNCHANGED in behavior; the live path,
+smoke.sh, cloning, and the controller must all still pass exactly as now.
+config gains "engine" (default "pocket") validated against installed engines.
+
+KOKORO SECOND (prove it before touching Supertonic):
+Add Kokoro-82M as an engine (kokoro pip package, Apache-2.0, PyTorch, happy on
+MPS). Expose its ~54 voices via voices(). Synth to int16 PCM chunks. If the
+package is not installed, the engine reports "not installed" with the pip/uv
+command, never crashes. Once Kokoro synthesizes and plays through the existing
+pipeline, wire the controller bench (below) and stop. Do NOT add Supertonic in
+the same run.
+
+CONTROLLER BENCH (features 2,3,5,6,8,9 from section 14):
+- GET /engines: [{name, installed, loaded, rss_mb}]. POST /engine {name}: set
+  active, hot-applied, saved to config. POST /bench {text, voice?}: synthesize
+  the text on every installed engine, return per-engine {clip_id, rtf,
+  ttfa_s, synth_s, duration_s, rss_mb}. Audition/speak take an optional engine.
+- Readiness cards (9): per-engine installed / loaded / RAM, install command
+  when missing.
+- Shootout (2): a text box, a "compare" button, plays each engine's clip on
+  demand, reuse the replay ring for the clips.
+- Metrics scoreboard (3): the /bench numbers in a live per-engine table. RTF =
+  synth_s / duration_s, measured in the daemon (resource.getrusage for RAM,
+  perf_counter for timing). RTF below 1.0 = faster than realtime.
+- Blind A/B/C (5): play the three clips unlabeled in random order, let me
+  score each, then reveal which engine was which.
+- Per-engine voices (6): the Voice Lab dropdowns and catalog reflect the
+  ACTIVE engine's voices, not a shared list.
+- Winner + cleanup (8): a "keep this engine" control that sets the default and
+  prints the uninstall / file-removal steps for the other engines. Do NOT run
+  the removal yourself; just show the commands.
+
+SUPERTONIC LAST (only after the Kokoro shootout works end to end):
+Add Supertonic-3 via sherpa-onnx as a third engine behind the same interface,
+then it joins the shootout automatically.
+
+INVARIANTS: the live voice path never regresses; Pocket default until I pick;
+engines lazy-load and idle-exit as today; stdlib daemon plus the engine
+packages, no web framework; controller stays one self-contained file and a
+remote, not a brain; run smoke.sh before every commit and keep it green.
+
+VERIFY: smoke.sh green, one real Claude turn still speaks via Pocket, then a
+bench run comparing Pocket vs Kokoro on the same sentence with real RTF
+numbers. One commit per meaningful step, plain messages. When done, update
+CLAUDE.md and this packet per the docs-sweep note.</pre>
+        </div>
+      </section>
+
       <div class="note">
         Mantra: the build was verify the payload, bench the voice, two small files, two config pastes. The refine is one knob, one regex, one dict, and hygiene. Everything else is ornament.
       </div>
 
-      <p class="footer">let-there-be-voice · build packet v5 · 2026-07-06 · phases 0-7 shipped, menu bar queued · single self-contained file, no external assets</p>
+      <p class="footer">let-there-be-voice · build packet v6 · 2026-07-06 · phases 0-7 shipped, menu bar + tts bench queued · single self-contained file, no external assets</p>
     </main>
   </div>
 
