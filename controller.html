@@ -174,6 +174,9 @@
     }
     .chip .cdots { display: inline-flex; gap: 3px; }
     .chip button { padding: 2px 7px; font-size: 9px; }
+    .audition-row { margin-bottom: 10px; }
+    #audition-text { width: 100%; background: var(--ink); border: 1px solid var(--line-soft); color: var(--text); padding: 6px 8px; font-size: 11px; }
+    #audition-text:focus { border-color: var(--blue); outline: none; }
     .clone { margin-top: 12px; }
     .clone-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
     #clone-name { flex: 1; min-width: 120px; background: var(--ink); border: 1px solid var(--line); color: var(--text); padding: 4px 6px; font-size: 11px; }
@@ -298,6 +301,9 @@
               <div class="assign"><div class="who"><i class="slotdot claude"></i>claude</div><div class="row"><select id="voice-claude"></select><button class="btn" data-audition="claude">play</button></div></div>
               <div class="assign"><div class="who"><i class="slotdot codex"></i>codex</div><div class="row"><select id="voice-codex"></select><button class="btn" data-audition="codex">play</button></div></div>
               <div class="assign"><div class="who"><i class="slotdot notification"></i>notify</div><div class="row"><select id="voice-notification"></select><button class="btn" data-audition="notification">play</button></div></div>
+            </div>
+            <div class="audition-row">
+              <input type="text" id="audition-text" placeholder="text to audition (blank = default sample)" value="The quick brown fox jumps over the lazy dog, and reads it back to you.">
             </div>
             <div class="pane-title"><span>catalog</span><span id="lab-state"></span></div>
             <div class="chips" id="catalog"></div>
@@ -702,6 +708,7 @@
     let assigned = {};
     let voiceList = [];
     let customSet = new Set();
+    const audition = (voice) => api("/audition", { voice, text: $("audition-text").value.trim() });
     function setLabButtons() {
       document.querySelectorAll("#catalog .btn, [data-audition]").forEach((b) => { b.disabled = auditionPlaying; });
       $("lab-state").textContent = auditionPlaying ? "auditioning…" : "";
@@ -734,7 +741,7 @@
       }
       renderCatalog();
       document.querySelectorAll("[data-audition]").forEach((b) => {
-        b.onclick = () => api("/audition", { voice: $("voice-" + b.dataset.audition).value });
+        b.onclick = () => audition($("voice-" + b.dataset.audition).value);
       });
     }
     function renderCatalog() {
@@ -750,7 +757,7 @@
         chip.append(name.replace(/_/g, " "), dots);
         const b = document.createElement("button");
         b.className = "btn"; b.textContent = "play";
-        b.onclick = () => api("/audition", { voice: name });
+        b.onclick = () => audition(name);
         chip.appendChild(b);
         if (customSet.has(name)) {
           const x = document.createElement("button");
@@ -772,7 +779,7 @@
       let bin = ""; const bytes = new Uint8Array(buf);
       for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
       const out = await api("/clone", { name, audio: btoa(bin) });
-      if (out.ok) { $("err-lab").textContent = ""; $("clone-name").value = ""; await initVoices(); api("/audition", { voice: out.voice }); }
+      if (out.ok) { $("err-lab").textContent = ""; $("clone-name").value = ""; await initVoices(); audition(out.voice); }
       else $("err-lab").textContent = out.error || "clone failed";
     }
     (() => {
