@@ -269,7 +269,7 @@
         <div class="calls">
           <span class="pill"><i class="dot"></i> Hooks, not PTY</span>
           <span class="pill">Python <span class="num">3.11</span> + uv</span>
-          <span class="pill">TTS: Pocket · <span class="num">0.05s</span> warm · <span class="num">921MB</span></span>
+          <span class="pill">TTS: Pocket default · Kokoro benched</span>
           <span class="pill">Daemon <span class="num">:7333</span></span>
           <span class="pill">M3 · <span class="num">16GB</span> · codex <span class="num">0.142.5</span></span>
         </div>
@@ -282,7 +282,7 @@
         <div class="section-head"><span class="idx">01</span><h2>Final Calls</h2><p>Fully shipped. Phases 0-6 plus the night shift and a controller v2 live since 2026-07-06.</p></div>
         <div class="grid cols-4">
           <div class="card pad metric"><b>Capture</b><span>Stop hooks in both CLIs deliver <code>last_assistant_message</code> as JSON on stdin. No PTY, no ANSI parsing, ever.</span></div>
-          <div class="card pad metric"><b>TTS</b><span>Pocket TTS won the bench: <span class="num">0.05s</span> warm first-audio, <span class="num">0.41s</span> full synth, <span class="num">921MB</span> RSS. Supertonic and Kokoro never needed. Engine stays one swappable constant.</span></div>
+          <div class="card pad metric"><b>TTS</b><span>Pocket stays default. Kokoro-82M is installed behind the engine registry and beat Pocket on warm RTF in the controller shootout: Pocket <span class="num">0.160</span>, Kokoro <span class="num">0.096</span>. Supertonic is still queued, not added.</span></div>
           <div class="card pad metric"><b>Daemon</b><span>Localhost HTTP on <span class="num">7333</span>. Owns cleanup, condense, synthesis, playback. Lazy model load, exits after <span class="num">10</span> min idle.</span></div>
           <div class="card pad metric"><b>Hook</b><span>Dumb forwarder. POSTs raw event + text to the daemon and exits in tens of ms. No network, no logic, no uv resolution: invoked as <code>.venv/bin/python</code> by absolute path.</span></div>
         </div>
@@ -294,7 +294,7 @@
           <table>
             <thead><tr><th>Layer</th><th>What</th><th>Notes</th></tr></thead>
             <tbody>
-              <tr><td>TTS engine</td><td>Pocket TTS (kyutai-labs), local on CPU</td><td>A voice-cloning model: every voice is a short reference sample embedded into a voice state. <span class="num">24</span>kHz mono, streams in <span class="num">80</span>ms chunks. No API key, no network, no per-character cost. Warm first-audio <span class="num">0.05s</span>, <span class="num">~921MB</span> resident.</td></tr>
+              <tr><td>TTS engine</td><td>Pocket TTS default, Kokoro-82M optional</td><td>Engines sit behind a lazy <code>load / voices / synth</code> registry. Pocket remains the live default. Kokoro exposes <span class="num">54</span> voices and joins the controller shootout. Warm bench: Pocket RTF <span class="num">0.160</span>, Kokoro RTF <span class="num">0.096</span>.</td></tr>
               <tr><td>Length limit</td><td>None from the engine</td><td>Generation is chunk-streamed, so time scales linearly with text and memory stays flat. Arbitrarily long input works; the <span class="num">400</span>-char condense cap is our taste policy, not a Pocket limit.</td></tr>
               <tr><td>Condense</td><td>DeepSeek <code>deepseek-v4-flash</code></td><td>The one network call, and only for replies over the threshold. Token from <code>settings.deepseek.json</code>, daemon-side only.</td></tr>
               <tr><td>Playback</td><td>ffplay (<code>atempo</code>) or afplay</td><td>ffplay preferred for pitch-preserving rate; afplay fallback.</td></tr>
@@ -379,7 +379,7 @@
           <article class="phase">
             <header><h3>1. TTS Bench</h3><span class="tag">Done</span></header>
             <ul>
-              <li>Pocket TTS, Supertonic-3 int8, Kokoro mlx-audio, in that order</li>
+              <li>Pocket TTS default; Kokoro-82M benched; Supertonic-3 still queued</li>
               <li>Note: pocket-tts requires PyTorch <span class="num">2.5+</span>, heaviest install of the three; count torch's RAM against the gate honestly</li>
               <li>Warm first-audio on <span class="num">~15</span> word sentence, resident RAM</li>
               <li>Pass: &lt;<span class="num">1s</span> and &lt;<span class="num">1GB</span>, pick by numbers, no pause</li>
@@ -513,11 +513,11 @@ command = "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/pyth
               <tr><td>Capture method</td><td>Hooks only, no PTY fallback</td><td>Both CLIs ship <code>last_assistant_message</code> in the Stop payload. PTY-era rationale is dead.</td></tr>
               <tr><td>Agent order</td><td>Claude Code first, Codex second</td><td>Older hook system, known-working examples. Codex is a config paste after.</td></tr>
               <tr><td>Long responses</td><td>DeepSeek <code>deepseek-v4-flash</code> condense, in the daemon</td><td>Credits already there, Anthropic-compatible endpoint, token in <code>settings.deepseek.json</code>. Moved out of the hook after Codex review (2026-07-05): network in the hook breaks the <span class="num">100ms</span> invariant.</td></tr>
-              <tr><td>Bench order</td><td>Pocket, Supertonic-3, Kokoro</td><td>Codex review: Supertonic is ONNX-native with the cleanest integration surface; mlx-audio drags in a bigger dependency tree. No Piper, macOS <code>say</code> is already the stopgap.</td></tr>
+              <tr><td>Bench order</td><td>Pocket, Kokoro, Supertonic</td><td>Revised 2026-07-06: Kokoro first after the abstraction, then Supertonic only after the Kokoro shootout works end to end.</td></tr>
               <tr><td>Voice</td><td>Stock preset, calm, slightly fast</td><td>Simplest first. Cloning and variants later, maybe never.</td></tr>
               <tr><td>Daemon lifecycle</td><td>Spawn-on-first-hook, <span class="num">10</span> min idle exit</td><td><span class="num">16GB</span> machine running Codex + Claude + browser. No forever-resident model.</td></tr>
               <tr><td>Voice input</td><td>Out of scope</td><td>Hex already does local Parakeet STT.</td></tr>
-              <tr><td>TTS engine</td><td>Pocket TTS, shipped</td><td>First candidate through the gate: <span class="num">0.05s</span> warm first-audio, <span class="num">921MB</span> RSS. Supertonic and Kokoro never benched.</td></tr>
+              <tr><td>TTS engine</td><td>Pocket default, Kokoro optional</td><td>Kokoro shootout shipped. Warm result on the same sentence: Pocket RTF <span class="num">0.160</span>, Kokoro RTF <span class="num">0.096</span>. Pocket remains default until a winner is picked.</td></tr>
               <tr><td>Kill switch</td><td><code>.voice-disabled</code> file in repo root</td><td>Zero config, greppable, no daemon restart. Hook checks it before anything else.</td></tr>
               <tr><td>Stop scope</td><td>cwd-scoped <code>/stop</code> (2026-07-06)</td><td>Two projects run concurrently in practice; typing in one must not silence the other. <code>working_cwd</code> covers the condense/synthesis window.</td></tr>
               <tr><td>Table replies</td><td>Strip tables, speak an invite</td><td>Reading rows aloud is noise. "I made a table, take a look" preserves the signal.</td></tr>
@@ -827,25 +827,25 @@ Phase 6 does. Run smoke.sh before every commit once it exists.</pre>
       </section>
 
       <section id="phase9">
-        <div class="section-head"><span class="idx">14</span><h2>Phase 9 · TTS Shootout Bench</h2><p>Aligned 2026-07-06. Turn the controller into a three-engine bench, learn, pick one, delete the rest.</p></div>
+        <div class="section-head"><span class="idx">14</span><h2>Phase 9 · TTS Shootout Bench</h2><p>Partly shipped 2026-07-06. Pocket default, Kokoro wired and proven, Supertonic still queued.</p></div>
         <div class="card" style="margin-bottom:8px">
           <table>
             <thead><tr><th>#</th><th>Feature</th><th>What it does</th></tr></thead>
             <tbody>
-              <tr><td><span class="num">0</span></td><td>Engine abstraction</td><td>Uniform <code>load / voices / synth</code> interface behind the current <code>ENGINE</code> constant. Pocket keeps working byte-identical; Kokoro and Supertonic slot in as siblings. Required foundation for everything else.</td></tr>
-              <tr><td><span class="num">2</span></td><td>Shootout mode</td><td>Paste one line, every installed engine synthesizes it, play each on demand. Same words, three voices, ears decide.</td></tr>
-              <tr><td><span class="num">3</span></td><td>Metrics scoreboard</td><td>Per synth: real-time factor (synth time / audio duration), time-to-first-audio, full synth time, RAM delta, clip length. Live per-engine table.</td></tr>
-              <tr><td><span class="num">5</span></td><td>Blind A/B/C</td><td>Play the three clips unlabeled in random order, score each, then reveal. Kills brand bias.</td></tr>
-              <tr><td><span class="num">6</span></td><td>Per-engine voices</td><td>Voice Lab shows the active engine's own catalog (Pocket <span class="num">26</span>, Kokoro <span class="num">54</span>, Supertonic multilingual).</td></tr>
-              <tr><td><span class="num">8</span></td><td>Winner + cleanup</td><td>"Keep this one" sets the default engine and prints the removal steps for the losers. The stated endgame, one click.</td></tr>
-              <tr><td><span class="num">9</span></td><td>Readiness cards</td><td>Per engine: installed / model-loaded / RAM, with the install command when missing. No silent failures.</td></tr>
+              <tr><td><span class="num">0</span></td><td>Engine abstraction</td><td><span class="tag">Shipped</span> Uniform lazy engine registry. Pocket behavior preserved; Kokoro slots in as a sibling.</td></tr>
+              <tr><td><span class="num">2</span></td><td>Shootout mode</td><td><span class="tag">Shipped</span> Paste one line, every installed engine synthesizes it, play each clip on demand through the replay ring.</td></tr>
+              <tr><td><span class="num">3</span></td><td>Metrics scoreboard</td><td><span class="tag">Shipped</span> Daemon returns RTF, TTFA, synth time, duration, RSS, and clip id per engine.</td></tr>
+              <tr><td><span class="num">5</span></td><td>Blind A/B/C</td><td><span class="tag">Shipped</span> Clips randomize into unlabeled buttons, then reveal.</td></tr>
+              <tr><td><span class="num">6</span></td><td>Per-engine voices</td><td><span class="tag">Shipped</span> Voice Lab follows the active engine catalog: Pocket <span class="num">26</span>, Kokoro <span class="num">54</span>.</td></tr>
+              <tr><td><span class="num">8</span></td><td>Winner + cleanup</td><td><span class="tag">Shipped</span> "Keep" sets the default and prints cleanup commands, without running removals.</td></tr>
+              <tr><td><span class="num">9</span></td><td>Readiness cards</td><td><span class="tag">Shipped</span> Per engine installed / loaded / RAM cards, with install commands when missing.</td></tr>
             </tbody>
           </table>
         </div>
         <div class="card">
           <div class="filter-row"><b>Order</b><span>Kokoro first: land the abstraction, wire Kokoro, prove it against Pocket in the shootout. Only then add Supertonic. Never both at once.</span><span class="tag yellow">Sequence</span></div>
           <div class="filter-row"><b>Endpoints</b><span><code>GET /engines</code> (installed / loaded / ram), <code>POST /engine</code> (set active), <code>POST /bench {text}</code> (synth on all installed, return clips + metrics). Audition and speak gain an optional engine.</span><span class="tag blue">Core</span></div>
-          <div class="filter-row"><b>Metric</b><span>Real-time factor is the gate: RTF below <span class="num">1.0</span> is faster than realtime. Pocket sits near <span class="num">0.17</span>. Measure honestly in the daemon, not the browser.</span><span class="tag blue">Core</span></div>
+          <div class="filter-row"><b>Metric</b><span>Real-time factor is the gate: RTF below <span class="num">1.0</span> is faster than realtime. Warm measured on 2026-07-06: Pocket <span class="num">0.160</span>, Kokoro <span class="num">0.096</span>. First Kokoro run included model download/load and was not the warm gate.</span><span class="tag blue">Core</span></div>
           <div class="filter-row"><b>Rules</b><span>The live voice path never breaks: Pocket stays default until Arshad picks a winner. Engines lazy-load. Stdlib daemon plus the engine packages, nothing more. Controller stays a remote.</span><span class="tag red">Hard</span></div>
         </div>
         <div class="note" style="margin-top:8px">
@@ -920,7 +920,7 @@ CLAUDE.md and this packet per the docs-sweep note.</pre>
         Mantra: the build was verify the payload, bench the voice, two small files, two config pastes. The refine is one knob, one regex, one dict, and hygiene. Everything else is ornament.
       </div>
 
-      <p class="footer">let-there-be-voice · build packet v6 · 2026-07-06 · phases 0-7 shipped, menu bar + tts bench queued · single self-contained file, no external assets</p>
+      <p class="footer">let-there-be-voice · build packet v6 · 2026-07-06 · phases 0-7 shipped, Kokoro shootout shipped, Supertonic queued · single self-contained file, no external assets</p>
     </main>
   </div>
 

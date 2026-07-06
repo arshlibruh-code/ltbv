@@ -25,15 +25,17 @@ Repo-local notes for Claude and Codex.
 - Path, URL, and filename tokens are stripped from sentences; diff and traceback lines are dropped whole.
 - Per-project pending queue: concurrent projects both get spoken, newest per project wins, notifications queue-jump.
 - When 2+ projects spoke within `project_window_s`, replies get rotating "In X / From X" prefixes.
-- Per-agent voices from the Pocket catalog: `voices.claude`, `voices.codex`, `voices.notification` in config.
+- TTS engines live behind the daemon registry. Pocket is the default. Kokoro-82M is installed as an optional shootout engine.
+- Per-agent voices from the active engine catalog: `voices.claude`, `voices.codex`, `voices.notification` in config. Pocket uses 26 catalog voices; Kokoro exposes 54.
 - Quiet hours (`quiet_hours` in config) accept speech but keep silent, logged as `quiet_skip`.
 - Empty `last_assistant_message` falls back to parsing `transcript_path`.
 - Playback via `afplay` honoring `rate` and `volume` config. The daemon exits after `idle_exit_s` idle.
 - Errors land in `.voice.log` as `event: "error"`. The log self-caps around 500 lines.
 
 ## Endpoints
-- `GET /` controller, `GET /health` (includes `git_rev`), `GET /config`, `GET /voices`, `GET /log/tail?limit=N`.
-- `POST /speak`, `POST /stop`, `POST /config`, `POST /audition {voice}`, `POST /recondense`.
+- `GET /` controller, `GET /health` (includes `git_rev`), `GET /config`, `GET /voices`, `GET /engines`, `GET /log/tail?limit=N`.
+- `POST /speak`, `POST /stop`, `POST /config`, `POST /engine {name}`, `POST /bench {text, voice?}`, `POST /audition {voice}`, `POST /recondense`.
+- Warm shootout on 2026-07-06, same sentence: Pocket RTF 0.160, TTFA 0.135s, synth 0.459s, duration 2.880s. Kokoro RTF 0.096, TTFA 0.420s, synth 0.420s, duration 4.375s.
 
 ## Kill switch
 - Create `.voice-disabled` in the repo root to block wake-up and speech (`./voice mute`).
