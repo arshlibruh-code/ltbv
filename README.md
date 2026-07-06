@@ -1,48 +1,32 @@
+<p align="center">
+  <img src="assets/ltbv-banner.png" alt="ltbv seven segment technical banner" width="980">
+</p>
+
 <div align="center">
   <h1>ltbv</h1>
+  <p><em>let there be voice</em></p>
   <p><strong>A local voice layer for coding agents.</strong></p>
   <p>
-    <code>macOS</code>
-    <code>Claude Code</code>
-    <code>Codex</code>
-    <code>localhost:7333</code>
-    <code>Pocket TTS</code>
-  </p>
-  <p>
+    <a href="https://arshlibruh-code.github.io/ltbv/field-guide.html"><kbd>FIELD GUIDE</kbd></a>
+    <a href="https://arshlibruh-code.github.io/ltbv/build-packet.html"><kbd>BUILD PACKET</kbd></a>
     <a href="#install"><kbd>INSTALL</kbd></a>
-    <a href="#usage"><kbd>USAGE</kbd></a>
-    <a href="#privacy"><kbd>PRIVACY</kbd></a>
-    <a href="field-guide.html"><kbd>FIELD GUIDE</kbd></a>
-    <a href="build-packet.html"><kbd>BUILD PACKET</kbd></a>
+    <a href="#controls"><kbd>CONTROLS</kbd></a>
   </p>
 </div>
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│ agent finishes -> hook forwards -> daemon speaks -> you chill │
-└──────────────────────────────────────────────────────────────┘
-```
+<p align="center">
+  <kbd>STOP HOOK</kbd>
+  <code>-></code>
+  <kbd>QUEUE BY CWD</kbd>
+  <code>-></code>
+  <kbd>LOCAL TTS</kbd>
+  <code>-></code>
+  <kbd>CHILL / SHUT UP</kbd>
+</p>
 
-`ltbv` speaks Claude Code and Codex replies out loud after a turn finishes. It runs as a tiny localhost daemon, keeps the hook fast, summarizes long or table-heavy replies, queues speech by project, and lets you interrupt without killing the agent.
-
-## What It Does
-
-| Surface | Behavior |
-|---|---|
-| Agent replies | Speaks final Claude Code and Codex turns |
-| Project lanes | Queues by `cwd`, so repos do not trample each other |
-| **CHILL** | Stops only the current speech |
-| **SHUT UP** | Blocks future speech with `.voice-disabled` |
-| Summaries | Condenses long replies and tables through a configurable summarizer |
-| TTS | Pocket by default, Kokoro available for shootouts |
-| Ducking | Optional Spotify fade-down while TTS is playing |
-
-## Requirements
-
-- macOS
-- Python 3.11
-- `uv`
-- `ffmpeg` or `ffplay` recommended for better playback speed control
+<p align="center">
+  Agent turns become project-aware speech.
+</p>
 
 ## Install
 
@@ -53,98 +37,33 @@ uv sync
 ./voice status
 ```
 
-The daemon starts automatically from the hook when needed. To start it manually:
+Wire Claude Code or Codex to:
 
 ```bash
-.venv/bin/python daemon.py
+$REPO/.venv/bin/python $REPO/hook.py
 ```
 
-Then open:
+Open the controller after the daemon starts:
 
 ```bash
 open http://127.0.0.1:7333/
 ```
 
-## Hook Setup
-
-Replace `$REPO` with the absolute path to this repo.
-
-Claude Code:
-
-```json
-{
-  "hooks": {
-    "Stop": [{ "hooks": [{
-      "type": "command",
-      "command": "$REPO/.venv/bin/python $REPO/hook.py"
-    }]}],
-    "UserPromptSubmit": [{ "hooks": [{
-      "type": "command",
-      "command": "$REPO/.venv/bin/python $REPO/hook.py"
-    }]}]
-  }
-}
-```
-
-Codex:
-
-```toml
-[[hooks.Stop]]
-
-[[hooks.Stop.hooks]]
-type = "command"
-command = "$REPO/.venv/bin/python $REPO/hook.py"
-
-[[hooks.UserPromptSubmit]]
-
-[[hooks.UserPromptSubmit.hooks]]
-type = "command"
-command = "$REPO/.venv/bin/python $REPO/hook.py"
-```
-
-## Usage
-
-```bash
-./voice status
-./voice chill
-./voice shutup
-./voice unshutup
-./voice say "Voice system online."
-```
-
-In the controller:
+## Controls
 
 | Control | Meaning |
 |---|---|
-| **CHILL** | Stop talking now |
-| **SHUT UP** | Disable future speech until re-enabled |
-| **Space** | Toggle SHUT UP |
+| `CHILL` | Stop the current speech |
+| `SHUT UP` | Disable future speech with `.voice-disabled` |
+| `Space` | Toggle SHUT UP |
+| `./voice say "text"` | Speak a manual line |
 
-## Privacy
+## Notes
 
-TTS synthesis and playback run locally. Long replies and table-heavy replies may be sent to the configured summarizer. The current default provider is DeepSeek, and `condense_provider: "none"` disables external summarization.
+TTS runs locally. Long and table-heavy replies can use the configured summarizer. Spotify ducking is opt-in. Browser ducking is future extension work.
 
-Spotify ducking is opt-in. Browser ducking is not included in v1 because reliable per-tab volume needs a browser extension.
-
-## Test
+Run the gate before changing behavior:
 
 ```bash
 ./smoke.sh
 ```
-
-The smoke suite starts the daemon if needed, verifies hook-to-speech, scoped interrupts, two project lanes, SHUT UP, replay, clone guards, and config validation.
-
-## Docs
-
-- `field-guide.html`: what the system feels like to use.
-- `build-packet.html`: implementation packet and engineering appendix.
-
-## Troubleshooting
-
-| Symptom | Check |
-|---|---|
-| No speech | `./voice status`, `.voice-disabled`, quiet hours, `.voice.log` |
-| First reply after idle is slow | The model lazy-loads after daemon idle exit |
-| Spotify does not duck | Enable Spotify ducking in the controller |
-| Long replies are not summarized | Check summarizer token or set `condense_provider` |
-| Port busy | Another daemon is already listening on `127.0.0.1:7333` |
