@@ -1,6 +1,6 @@
 #!/bin/bash
 # voice: poke the let-there-be-voice daemon from any terminal.
-# usage: voice status | stop | mute | unmute | say "text"
+# usage: voice status | chill | shutup | unshutup | say "text"
 set -u
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 PY="$ROOT/.venv/bin/python"
@@ -16,14 +16,14 @@ case "${1:-}" in
     fi
     [ -f "$KILL" ] && echo "kill switch: ON (.voice-disabled present)" || echo "kill switch: off"
     ;;
-  stop)
-    curl -sf -m 2 -X POST "$BASE/stop" -d '{}' >/dev/null && echo "stopped" || echo "daemon down, nothing to stop"
+  chill|stop)
+    curl -sf -m 2 -X POST "$BASE/stop" -d '{}' >/dev/null && echo "chilled" || echo "daemon down, nothing to chill"
     ;;
-  mute)
-    touch "$KILL" && echo "muted (.voice-disabled created)"
+  shutup|mute)
+    touch "$KILL" && echo "shut up on (.voice-disabled created)"
     ;;
-  unmute)
-    rm -f "$KILL" && echo "unmuted"
+  unshutup|unmute)
+    rm -f "$KILL" && echo "shut up off"
     ;;
   say)
     shift
@@ -40,7 +40,7 @@ case "${1:-}" in
     echo "queued"
     ;;
   *)
-    echo "usage: voice status|stop|mute|unmute|say \"text\""
+    echo "usage: voice status|chill|shutup|unshutup|say \"text\""
     exit 1
     ;;
 esac

@@ -398,7 +398,7 @@
         <a href="#long">Long Answers <small>08</small></a>
         <a href="#controller">Controller <small>09</small></a>
         <a href="#voices">Voices <small>10</small></a>
-        <a href="#kill">Kill Switch <small>11</small></a>
+        <a href="#kill">Shut Up <small>11</small></a>
         <a href="#shutdown">Shutdown <small>12</small></a>
         <a href="#test">How To Test <small>13</small></a>
       </nav>
@@ -575,12 +575,12 @@
       <section id="kill">
         <div class="section-head">
           <span class="idx">11</span>
-          <h2>Kill Switch</h2>
-          <p>Silence on demand.</p>
+          <h2>Shut Up</h2>
+          <p>Silence that sticks.</p>
         </div>
         <div class="grid cols-2">
-          <div class="card pad metric"><b>Mute everything</b><span>Drop a file named <code>.voice-disabled</code> in the repo root. The hook sees it before anything else and refuses to wake the daemon or speak. No restart, no config.</span></div>
-          <div class="card pad metric"><b>Unmute</b><span>Delete the file. The next completed turn just speaks again, as if nothing happened.</span></div>
+          <div class="card pad metric"><b>SHUT UP</b><span>Press Space or drop a file named <code>.voice-disabled</code> in the repo root. The hook sees it before anything else and refuses to wake the daemon or speak. No restart, no config.</span></div>
+          <div class="card pad metric"><b>CHILL</b><span>Use this when the model is already speaking and you only want the current sentence to stop. The next completed turn can still speak.</span></div>
         </div>
       </section>
 
@@ -611,10 +611,10 @@
         <div class="grid cols-4">
           <div class="card pad metric"><b>Health</b><span>Ask the daemon if it is alive. That only tells you the speaker service is ready, not that hooks are wired.</span></div>
           <div class="card pad metric"><b>Manual hook</b><span>Feed a fake completed turn to the hook and listen for speech. That tests the path end to end.</span></div>
-          <div class="card pad metric"><b>Spotify duck</b><span>Enable ducking, play Spotify, trigger speech, and listen for fade down during TTS plus exact restore after. Shut up should restore too.</span></div>
+          <div class="card pad metric"><b>Spotify duck</b><span>Enable ducking, play Spotify, trigger speech, and listen for fade down during TTS plus exact restore after. Chill should restore too.</span></div>
           <div class="card pad metric"><b>Claude turn</b><span>Run a normal Claude Code reply and let the real Stop hook fire.</span></div>
           <div class="card pad metric"><b>Codex turn</b><span>Run a normal Codex reply once the hook is trusted, and confirm the same behavior there.</span></div>
-          <div class="card pad metric"><b>Kill switch</b><span>Create <code>.voice-disabled</code>, run a turn, confirm silence. Delete it, confirm the voice comes back.</span></div>
+          <div class="card pad metric"><b>Shut Up</b><span>Create <code>.voice-disabled</code>, run a turn, confirm silence. Delete it, confirm the voice comes back.</span></div>
           <div class="card pad metric"><b>The log</b><span>Every spoken or skipped reply lands in <code>.voice.log</code>, with what was stripped, condensed, and prefixed.</span></div>
         </div>
       </section>

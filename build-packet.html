@@ -355,7 +355,7 @@
               <tr><td>Silence over noise</td><td>Any failure (daemon down, API error, malformed payload) means no sound and exit <span class="num">0</span>. Errors never leak into the agent session.</td></tr>
               <tr><td>Never speak code</td><td>No code, diffs, stack traces, or raw paths, under any condition.</td></tr>
               <tr><td>Instant interrupt</td><td>New user input kills current speech immediately, scoped to the project it came from.</td></tr>
-              <tr><td>Kill switch</td><td><code>.voice-disabled</code> in the repo root blocks wake-up and speech before anything else runs. Delete it to re-enable, no restart.</td></tr>
+              <tr><td>SHUT UP</td><td><code>.voice-disabled</code> in the repo root blocks wake-up and speech before anything else runs. Delete it to re-enable, no restart.</td></tr>
               <tr><td>Local, one asterisk</td><td>Everything runs on-device except optional summarizer calls for long prose and table replies.</td></tr>
               <tr><td>Stay small</td><td>No framework, no packaging, no tests beyond the bench script. A handful of files. Personal tool, not a product. Amended 2026-07-06: "no config UI" fell deliberately; <code>controller.html</code> is the sanctioned tuning surface, served by the daemon. It is a remote, not a brain: all behavior stays in <code>daemon.py</code>.</td></tr>
               <tr><td>Secrets</td><td>The current summarizer token is read at runtime from <code>~/.claude/settings.deepseek.json</code>. Never stored or committed in this repo.</td></tr>
@@ -450,7 +450,7 @@
             <header><h3>8. Menu bar</h3><span class="tag yellow">Queued</span></header>
             <ul>
               <li><code>rumps</code> status-bar companion</li>
-              <li>Icon color = health, mute toggle, shut up</li>
+              <li>Icon color = health, SHUT UP toggle, CHILL interrupt</li>
               <li>launchd plist for launch-at-login</li>
               <li>A face on the daemon, not new behavior</li>
             </ul>
@@ -518,7 +518,7 @@ command = "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/pyth
               <tr><td>Daemon lifecycle</td><td>Spawn-on-first-hook, <span class="num">10</span> min idle exit</td><td><span class="num">16GB</span> machine running Codex + Claude + browser. No forever-resident model.</td></tr>
               <tr><td>Voice input</td><td>Out of scope</td><td>Hex already does local Parakeet STT.</td></tr>
               <tr><td>TTS engine</td><td>Pocket default, Kokoro optional</td><td>Kokoro shootout shipped. Warm result on the same sentence: Pocket RTF <span class="num">0.160</span>, Kokoro RTF <span class="num">0.096</span>. Pocket remains default until a winner is picked.</td></tr>
-              <tr><td>Kill switch</td><td><code>.voice-disabled</code> file in repo root</td><td>Zero config, greppable, no daemon restart. Hook checks it before anything else.</td></tr>
+              <tr><td>SHUT UP</td><td><code>.voice-disabled</code> file in repo root</td><td>Zero config, greppable, no daemon restart. Hook checks it before anything else.</td></tr>
               <tr><td>Stop scope</td><td>cwd-scoped <code>/stop</code> (2026-07-06)</td><td>Two projects run concurrently in practice; typing in one must not silence the other. <code>working_cwd</code> covers the condense/synthesis window.</td></tr>
               <tr><td>Table replies</td><td>Raw reply to summarizer, speak the summary</td><td>Reading rows aloud is noise, but stripping tables before the model loses context. If the summarizer is unavailable, fall back to the spoken invite.</td></tr>
               <tr><td>Condense failure</td><td>Audible failure line, superseded: first sentence + note (Phase 5)</td><td>Audible beat silent, but losing the content entirely was worse than a degraded summary.</td></tr>
@@ -784,7 +784,7 @@ run, so self-check relentlessly and never leave the tree broken):
     fallback, never built. Log {"event":"transcript_fallback"} when used.
 
 21. voicectl: a tiny ./voice shell script in the repo: status (pretty
-    /health), stop, mute (create .voice-disabled), unmute (remove it),
+    /health), chill (stop current speech), shutup (create .voice-disabled), unshutup (remove it),
     say "text" (POST /speak). Stdlib/curl-level simplicity, no deps.
 
 22. Temperature knob: expose Pocket's TTS temperature (default 0.7) in
@@ -808,7 +808,7 @@ permit exactly this controller, nothing more):
 - Never speak code, diffs, stack traces, or raw file paths.
 - New input in a project kills that project's speech instantly; stale speech
   never resurrects after an interrupt.
-- Kill switch: .voice-disabled in the repo root blocks everything.
+- SHUT UP: .voice-disabled in the repo root blocks everything.
 - Everything local except the optional summarizer condense call; only the daemon
   touches the network or the token.
 - Keep it small: no framework, no packaging, no tests beyond the bench

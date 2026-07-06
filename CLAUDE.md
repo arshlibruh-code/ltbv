@@ -13,7 +13,7 @@ Repo-local notes for Claude and Codex.
 - `controller.html`: tuning frontend, served by the daemon at `http://127.0.0.1:7333/`.
 - `config.json`: runtime config, written by the controller, untracked. Delete it to reset to defaults.
 - `smoke.sh`: end-to-end confidence suite. Run before committing daemon or hook changes.
-- `voice`: CLI helper. `./voice status|stop|mute|unmute|say "text"`.
+- `voice`: CLI helper. `./voice status|chill|shutup|unshutup|say "text"`.
 - `bench_tts.py`: Pocket TTS bench script.
 - `build-packet.html`: implementation packet and source of truth.
 - `field-guide.html`: narrative guide for how the system behaves.
@@ -37,9 +37,10 @@ Repo-local notes for Claude and Codex.
 - `POST /speak`, `POST /stop`, `POST /config`, `POST /engine {name}`, `POST /bench {text, voice?}`, `POST /audition {voice}`, `POST /recondense`.
 - Warm shootout on 2026-07-06, same sentence: Pocket RTF 0.160, TTFA 0.135s, synth 0.459s, duration 2.880s. Kokoro RTF 0.096, TTFA 0.420s, synth 0.420s, duration 4.375s.
 
-## Kill switch
-- Create `.voice-disabled` in the repo root to block wake-up and speech (`./voice mute`).
-- Remove it to re-enable (`./voice unmute`).
+## Shut Up vs Chill
+- SHUT UP creates `.voice-disabled` in the repo root and blocks wake-up plus future speech (`./voice shutup`, Space in the controller).
+- CHILL calls `/stop` and only interrupts whatever is talking right now (`./voice chill`).
+- Remove `.voice-disabled` to re-enable (`./voice unshutup`).
 
 ## Test
 - Full suite: `./smoke.sh` (temporarily lifts the kill switch, restores it after).
