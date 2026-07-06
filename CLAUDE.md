@@ -51,6 +51,7 @@ Repo-local notes for Claude and Codex.
 
 ## Notes
 - Keep changes narrow.
+- After committing in a session (whether one commit or many), check whether `build-packet.html` and `voice-field-guide.html` still match reality and update them if it moved. The packet tracks decisions and phases; the guide tracks behavior. Docs lag silently, so this is a deliberate step, not an afterthought.
 - Do not reintroduce a PTY wrapper.
 - Do not put logic back into `hook.py` unless absolutely necessary (agent detection, retry, and Notification text are the sanctioned exceptions).
 - Temperature changes drop the loaded model; it lazily reloads with the new value on the next speak.
