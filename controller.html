@@ -34,12 +34,13 @@
 
     /* ---------- top ---------- */
     .topbar {
-      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-      justify-content: space-between; padding: 9px 12px; margin-bottom: 10px;
+      display: grid; grid-template-columns: minmax(150px, 1fr) auto minmax(150px, 1fr);
+      gap: 8px; align-items: center; padding: 9px 12px; margin-bottom: 10px;
       border: 1px solid var(--line); background: var(--panel);
     }
     .topbar h1 { margin: 0; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
-    .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+    .pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+    .top-actions { display: flex; gap: 6px; justify-content: flex-end; }
     .pill {
       display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px;
       border: 1px solid var(--line); background: var(--panel-2);
@@ -56,7 +57,16 @@
     .btn:hover { border-color: var(--blue); }
     .btn.danger { color: var(--red); }
     .btn.danger:hover { border-color: var(--red); }
+    .btn.danger.busy { border-color: var(--yellow); color: var(--yellow); }
+    .btn.danger.done { border-color: var(--green); color: var(--green); }
+    .btn.toggle.on { border-color: var(--yellow); color: var(--yellow); }
     .btn:disabled { opacity: 0.35; cursor: default; }
+    #shutup { min-width: 116px; }
+    #mute { min-width: 74px; }
+    @media (max-width: 820px) {
+      .topbar { grid-template-columns: 1fr; }
+      .pills, .top-actions { justify-content: flex-start; }
+    }
 
     /* now speaking strip */
     #nowstrip {
@@ -248,7 +258,10 @@
         <span class="pill">rev <span id="h-rev">…</span></span>
         <span class="pill">spoke <span id="h-spoke">never</span></span>
       </div>
-      <button class="btn danger" id="shutup" title="spacebar">shut up <kbd>space</kbd></button>
+      <div class="top-actions">
+        <button class="btn toggle" id="mute" title="M">mute <kbd>m</kbd></button>
+        <button class="btn danger" id="shutup" title="spacebar">shut up <kbd>space</kbd></button>
+      </div>
     </div>
 
     <div id="nowstrip">
@@ -277,6 +290,10 @@
               <span>median <b id="r-median">…</b></span>
             </div>
             <div class="scrubs" id="scrubs"></div>
+            <div class="row-actions">
+              <button class="btn toggle" id="duck-toggle">spotify duck off</button>
+              <span class="hint">fade Spotify during speech, restore after</span>
+            </div>
             <div class="quiet">
               <div class="cap">
                 <span class="lbl">quiet hours · drag across the day</span>
@@ -405,6 +422,7 @@
     let engines = [];
     let benchResults = [];
     let blindOrder = [];
+    let isMuted = false;
 
     // ---------- config save with inline armor errors ----------
     let saveTimer = null;
@@ -438,7 +456,15 @@
         $("h-uptime").textContent = fmtDur(h.uptime_s);
         $("h-rev").textContent = h.git_rev || "?";
         $("h-spoke").textContent = h.last_spoken_ts ? new Date(h.last_spoken_ts * 1000).toLocaleTimeString() : "never";
+        setMuteState(!!h.muted);
       } catch { $("dot").classList.remove("on"); }
+    }
+
+    function setMuteState(muted) {
+      isMuted = muted;
+      $("mute").classList.toggle("on", muted);
+      $("mute").innerHTML = muted ? 'muted <kbd>m</kbd>' : 'mute <kbd>m</kbd>';
+      $("dot").classList.toggle("on", !muted);
     }
 
     // ---------- TTS shootout ----------
@@ -594,6 +620,7 @@
     const KNOBS = [
       { key: "rate",               label: "playback rate", min: 0.5, max: 2,    step: 0.05, fmt: (v) => v.toFixed(2) + "x" },
       { key: "volume",             label: "volume",        min: 0,   max: 1,    step: 0.05, fmt: (v) => Math.round(v * 100) + "%" },
+      { key: "duck_target_volume", label: "Spotify duck volume", min: 0, max: 100, step: 5, fmt: (v) => Math.round(v) + "%" },
       { key: "temperature",        label: "temperature · reloads model", min: 0.1, max: 1.5, step: 0.05, fmt: (v) => v.toFixed(2) },
       { key: "idle_exit_s",        label: "idle exit",     min: 60,  max: 3600, step: 30,   fmt: fmtDur },
       { key: "project_window_s",   label: "prefix window", min: 60,  max: 3600, step: 30,   fmt: fmtDur },
@@ -612,12 +639,19 @@
     }
     function renderScrubs() {
       for (const k of KNOBS) renderScrub(document.querySelector(`.scrub[data-key="${k.key}"]`), k, cfg[k.key]);
+      renderDucking();
     }
     function renderScrub(el, k, v) {
       el.querySelector(".val").textContent = k.fmt(v);
       const frac = (v - k.min) / (k.max - k.min);
       el.querySelector(".fill").style.width = (frac * 100) + "%";
       el.querySelector(".nub").style.left = `calc(${frac * 100}% - 1px)`;
+    }
+
+    function renderDucking() {
+      if (!cfg) return;
+      $("duck-toggle").classList.toggle("on", !!cfg.ducking_enabled);
+      $("duck-toggle").textContent = cfg.ducking_enabled ? "spotify duck on" : "spotify duck off";
     }
     function attachScrub(el, k) {
       let x0 = 0, v0 = 0, live = null, moved = false, pid = null;
@@ -998,6 +1032,11 @@
 
     // ---------- personality ----------
     $("save-prompt").onclick = () => pushConfig({ condense_prompt: $("prompt").value }, "saved-prompt", "err-prompt");
+    $("duck-toggle").onclick = () => {
+      cfg.ducking_enabled = !cfg.ducking_enabled;
+      renderDucking();
+      pushConfig({ ducking_enabled: cfg.ducking_enabled }, "saved-desk", "err-desk");
+    };
     $("recondense").onclick = async () => {
       $("recondense").disabled = true;
       const out = await api("/recondense", {});
@@ -1008,14 +1047,43 @@
     $("bench-run").onclick = runBench;
 
     // ---------- shut up ----------
-    const shutUp = () => api("/stop", {});
+    let stopFlash = null;
+    const markStopped = () => {
+      clearTimeout(stopFlash);
+      for (const b of [$("shutup"), $("now-stop")]) {
+        b.classList.remove("busy");
+        b.classList.add("done");
+      }
+      stopFlash = setTimeout(() => {
+        for (const b of [$("shutup"), $("now-stop")]) b.classList.remove("done");
+      }, 500);
+    };
+    const shutUp = async () => {
+      clearTimeout(stopFlash);
+      for (const b of [$("shutup"), $("now-stop")]) {
+        b.classList.remove("done");
+        b.classList.add("busy");
+      }
+      try { await api("/stop", {}); }
+      finally { markStopped(); }
+    };
+    const toggleMute = async () => {
+      const out = await api("/mute", { muted: !isMuted });
+      if (out.ok) setMuteState(!!out.muted);
+    };
+    $("mute").onclick = toggleMute;
     $("shutup").onclick = shutUp;
     $("now-stop").onclick = shutUp;
     addEventListener("keydown", (e) => {
-      if (e.code !== "Space") return;
       const t = e.target.tagName;
       if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT" || t === "BUTTON") return;
-      e.preventDefault(); shutUp();
+      if (e.code === "Space") {
+        e.preventDefault(); shutUp();
+        return;
+      }
+      if (e.key.toLowerCase() === "m") {
+        e.preventDefault(); toggleMute();
+      }
     });
 
     // ---------- SSE ----------
@@ -1026,6 +1094,7 @@
         if (ev.event === "hello") { setNow(ev.now); return; }
         if (ev.event === "now") { setNow(ev.on ? ev : null); return; }
         if (ev.event === "wave") { startStage(ev.peaks, ev.duration); return; }
+        if (ev.event === "mute") { setMuteState(!!ev.muted); return; }
         if (ev.event === "config") {
           api("/config").then((c) => {
             cfg = c.config;
