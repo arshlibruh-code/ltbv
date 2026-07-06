@@ -61,12 +61,12 @@ if curl -sf -m 2 "$BASE/health" | grep -q '"ok": true'; then pass "daemon health
 
 # 2. hook end-to-end: fake Stop payload must produce a speak event
 SINCE=$("$PY" -c "import time; print(time.time())")
-printf '%s' '{"hook_event_name":"Stop","last_assistant_message":"smoke test one","cwd":"/tmp/smokeA"}' | "$PY" "$ROOT/hook.py"
+printf '%s' '{"hook_event_name":"Stop","last_assistant_message":"Voice system online.","cwd":"/tmp/smokeA"}' | "$PY" "$ROOT/hook.py"
 if wait_for_event speak "$SINCE" 60; then pass "hook to speech"; else fail "hook to speech"; fi
 
 # 3. scoped stop: stop from unrelated project must be ignored
 SINCE=$("$PY" -c "import time; print(time.time())")
-curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"smoke scoped stop check","cwd":"/tmp/smokeA"}' >/dev/null
+curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"Testing scoped interrupt.","cwd":"/tmp/smokeA"}' >/dev/null
 sleep 0.3
 curl -sf -m 2 -X POST "$BASE/stop" -d '{"cwd":"/tmp/smokeUNRELATED"}' >/dev/null
 if wait_for_event stop_ignored "$SINCE" 5; then pass "scoped stop ignored"; else fail "scoped stop ignored"; fi
@@ -74,8 +74,8 @@ curl -sf -m 2 -X POST "$BASE/stop" -d '{"cwd":"/tmp/smokeA"}' >/dev/null
 
 # 4. overlap: two projects enqueued together must both speak
 SINCE=$("$PY" -c "import time; print(time.time())")
-curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"project A reporting","cwd":"/tmp/smokeA"}' >/dev/null
-curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"project B reporting","cwd":"/tmp/smokeB"}' >/dev/null
+curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"Project A channel ready.","cwd":"/tmp/smokeA"}' >/dev/null
+curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"Project B channel ready.","cwd":"/tmp/smokeB"}' >/dev/null
 OK=0
 for _ in $(seq 1 90); do
   [ "$(log_count speak "$SINCE")" -ge 2 ] && OK=1 && break
@@ -86,7 +86,7 @@ if [ "$OK" = 1 ]; then pass "two-project overlap"; else fail "two-project overla
 # 5. kill switch blocks the hook
 touch "$KILL"
 SINCE=$("$PY" -c "import time; print(time.time())")
-printf '%s' '{"hook_event_name":"Stop","last_assistant_message":"should be silent","cwd":"/tmp/smokeA"}' | "$PY" "$ROOT/hook.py"
+printf '%s' '{"hook_event_name":"Stop","last_assistant_message":"Muted path check.","cwd":"/tmp/smokeA"}' | "$PY" "$ROOT/hook.py"
 sleep 2
 if [ "$(log_count speak "$SINCE")" -eq 0 ]; then pass "kill switch blocks"; else fail "kill switch blocks"; fi
 rm -f "$KILL"
