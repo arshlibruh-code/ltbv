@@ -1,6 +1,6 @@
 #!/bin/bash
 # smoke.sh: end-to-end confidence check for let-there-be-voice.
-# Exits 0 only if every check passes. Speaks briefly at configured volume.
+# Exits 0 only if every check passes. Speaks one random line, mutes internal checks, then replays it.
 set -u
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 PY="$ROOT/.venv/bin/python"
@@ -8,6 +8,8 @@ LOG="$ROOT/.voice.log"
 KILL="$ROOT/.voice-disabled"
 BASE="http://127.0.0.1:7333"
 FAIL=0
+ORIG_VOLUME=""
+FIRST_CLIP=""
 
 say_check() { printf '%-34s %s\n' "$1" "$2"; }
 pass() { say_check "$1" "ok"; }
@@ -32,6 +34,25 @@ print(n)
 EOF
 }
 
+latest_clip_since() { # latest_clip_since <since-epoch>
+  "$PY" - "$1" <<'EOF'
+import json, sys
+since = float(sys.argv[1])
+clip = ""
+try:
+    for line in open(".voice.log"):
+        try:
+            d = json.loads(line)
+        except Exception:
+            continue
+        if d.get("event") == "speak" and d.get("ts", 0) >= since and d.get("clip"):
+            clip = d["clip"]
+except FileNotFoundError:
+    pass
+print(clip)
+EOF
+}
+
 wait_for_event() { # wait_for_event <event> <since> <timeout-s>
   local i=0
   while [ "$i" -lt "$3" ]; do
@@ -44,7 +65,13 @@ wait_for_event() { # wait_for_event <event> <since> <timeout-s>
 # restore kill switch state on exit
 HAD_KILL=0
 [ -f "$KILL" ] && HAD_KILL=1 && mv "$KILL" "$KILL.smoke"
-cleanup() { [ "$HAD_KILL" = 1 ] && mv -f "$KILL.smoke" "$KILL" 2>/dev/null; }
+restore_volume() {
+  [ -n "$ORIG_VOLUME" ] && curl -sf -m 2 -X POST "$BASE/config" -d "{\"volume\": $ORIG_VOLUME}" >/dev/null 2>&1
+}
+cleanup() {
+  restore_volume
+  [ "$HAD_KILL" = 1 ] && mv -f "$KILL.smoke" "$KILL" 2>/dev/null
+}
 trap cleanup EXIT
 
 cd "$ROOT"
@@ -58,53 +85,71 @@ if ! curl -sf -m 2 "$BASE/health" >/dev/null 2>&1; then
   done
 fi
 if curl -sf -m 2 "$BASE/health" | grep -q '"ok": true'; then pass "daemon health"; else fail "daemon health"; fi
+ORIG_VOLUME=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["config"]["volume"])')
+SMOKE_LINE=$("$PY" - <<'EOF'
+import random
+lines = [
+    "Can you hear me? I'm wired into the voice layer now.",
+    "I'm on the wire. You should be able to hear me now.",
+    "Voice link is live. I can talk back now.",
+    "Hook path is live. If you can hear this, the loop works.",
+    "Can you hear me? If yes, the hook path works.",
+    "Voice channel is armed. Let there be voice.",
+    "Signal is clean. The local speech loop is holding.",
+    "Testing the voice path. Tell me if this reaches you.",
+    "I'm speaking through the hook now. The daemon caught me.",
+    "Can you hear me? If yes, the hook path works. Let there be voice.",
+]
+print(random.choice(lines))
+EOF
+)
 
 # 2. hook end-to-end: fake Stop payload must produce a speak event
 SINCE=$("$PY" -c "import time; print(time.time())")
-printf '%s' '{"hook_event_name":"Stop","last_assistant_message":"Voice system online.","cwd":"/tmp/smokeA"}' | "$PY" "$ROOT/hook.py"
-if wait_for_event speak "$SINCE" 60; then pass "hook to speech"; else fail "hook to speech"; fi
+PAYLOAD=$("$PY" - "$SMOKE_LINE" <<'EOF'
+import json, sys
+print(json.dumps({
+    "hook_event_name": "Stop",
+    "last_assistant_message": sys.argv[1],
+    "cwd": "/tmp/ltbv-smoke",
+}))
+EOF
+)
+printf '%s' "$PAYLOAD" | "$PY" "$ROOT/hook.py"
+if wait_for_event speak "$SINCE" 60; then pass "hook speaks"; else fail "hook speaks"; fi
+FIRST_CLIP=$(latest_clip_since "$SINCE")
+curl -sf -m 2 -X POST "$BASE/config" -d '{"volume": 0}' >/dev/null
 
 # 3. scoped stop: stop from unrelated project must be ignored
 SINCE=$("$PY" -c "import time; print(time.time())")
-curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"Testing scoped interrupt.","cwd":"/tmp/smokeA"}' >/dev/null
+curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"smoke scoped stop","cwd":"/tmp/ltbv-smoke"}' >/dev/null
 sleep 0.3
-curl -sf -m 2 -X POST "$BASE/stop" -d '{"cwd":"/tmp/smokeUNRELATED"}' >/dev/null
-if wait_for_event stop_ignored "$SINCE" 5; then pass "scoped stop ignored"; else fail "scoped stop ignored"; fi
-curl -sf -m 2 -X POST "$BASE/stop" -d '{"cwd":"/tmp/smokeA"}' >/dev/null
+curl -sf -m 2 -X POST "$BASE/stop" -d '{"cwd":"/tmp/ltbv-other"}' >/dev/null
+if wait_for_event stop_ignored "$SINCE" 5; then pass "other project ignored"; else fail "other project ignored"; fi
+curl -sf -m 2 -X POST "$BASE/stop" -d '{"cwd":"/tmp/ltbv-smoke"}' >/dev/null
 
-# 4. overlap: two projects enqueued together must both speak
+# 4. multi-project queue: two projects enqueued together must both speak
 SINCE=$("$PY" -c "import time; print(time.time())")
-curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"Project A channel ready.","cwd":"/tmp/smokeA"}' >/dev/null
-curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"Project B channel ready.","cwd":"/tmp/smokeB"}' >/dev/null
+curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"smoke queue one","cwd":"/tmp/ltbv-alpha"}' >/dev/null
+curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"smoke queue two","cwd":"/tmp/ltbv-beta"}' >/dev/null
 OK=0
 for _ in $(seq 1 90); do
   [ "$(log_count speak "$SINCE")" -ge 2 ] && OK=1 && break
   sleep 1
 done
-if [ "$OK" = 1 ]; then pass "two-project overlap"; else fail "two-project overlap"; fi
+if [ "$OK" = 1 ]; then pass "multi-project queue"; else fail "multi-project queue"; fi
 
-# 5. kill switch blocks the hook
+# 5. SHUT UP blocks the hook
 touch "$KILL"
 SINCE=$("$PY" -c "import time; print(time.time())")
-printf '%s' '{"hook_event_name":"Stop","last_assistant_message":"Muted path check.","cwd":"/tmp/smokeA"}' | "$PY" "$ROOT/hook.py"
+printf '%s' '{"hook_event_name":"Stop","last_assistant_message":"smoke muted path","cwd":"/tmp/ltbv-smoke"}' | "$PY" "$ROOT/hook.py"
 sleep 2
-if [ "$(log_count speak "$SINCE")" -eq 0 ]; then pass "kill switch blocks"; else fail "kill switch blocks"; fi
+if [ "$(log_count speak "$SINCE")" -eq 0 ]; then pass "shut up blocks"; else fail "shut up blocks"; fi
 rm -f "$KILL"
 
-# 5b. replay: the last clip in the log must replay
-CLIP=$("$PY" - <<'EOF'
-import json
-clip=""
-try:
-    for line in open(".voice.log"):
-        try: d=json.loads(line)
-        except Exception: continue
-        if d.get("event")=="speak" and d.get("clip"): clip=d["clip"]
-except FileNotFoundError: pass
-print(clip)
-EOF
-)
-if [ -n "$CLIP" ] && curl -sf -m 2 -X POST "$BASE/replay" -d "{\"clip\":\"$CLIP\"}" | grep -q '"ok": true'; then pass "replay clip"; else fail "replay clip"; fi
+# 5b. replay: the first smoke clip must replay after internal checks
+restore_volume
+if [ -n "$FIRST_CLIP" ] && curl -sf -m 2 -X POST "$BASE/replay" -d "{\"clip\":\"$FIRST_CLIP\"}" | grep -q '"ok": true'; then pass "replay first clip"; else fail "replay first clip"; fi
 
 # 5c. clone rejects a bad name without touching the system
 if curl -s -m 2 -X POST "$BASE/clone" -d '{"name":"BAD NAME","audio":""}' | grep -q '"ok": false'; then pass "clone guard"; else fail "clone guard"; fi
@@ -118,7 +163,15 @@ if [ "$GOT" = "401" ]; then pass "config roundtrip"; else fail "config roundtrip
 
 # 7. config armor: bad field rejected, system stays up
 ERRS=$(curl -sf -m 2 -X POST "$BASE/config" -d '{"max_direct_chars": "garbage"}' | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin)["errors"]))')
-if [ "$ERRS" = "1" ] && curl -sf -m 2 "$BASE/health" >/dev/null; then pass "config armor"; else fail "config armor"; fi
+if [ "$ERRS" = "1" ] && curl -sf -m 2 "$BASE/health" >/dev/null; then pass "config rejects bad input"; else fail "config rejects bad input"; fi
+
+# 8. summary style validates as a closed config set
+STYLE=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["config"]["speech_style"])')
+curl -sf -m 2 -X POST "$BASE/config" -d '{"speech_style": "natural"}' >/dev/null
+GOT=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["config"]["speech_style"])')
+curl -sf -m 2 -X POST "$BASE/config" -d "{\"speech_style\": \"$STYLE\"}" >/dev/null
+BAD=$(curl -sf -m 2 -X POST "$BASE/config" -d '{"speech_style": "ramble"}' | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin)["errors"]))')
+if [ "$GOT" = "natural" ] && [ "$BAD" = "1" ]; then pass "summary style config"; else fail "summary style config"; fi
 
 if [ "$FAIL" = 0 ]; then echo "SMOKE PASS"; else echo "SMOKE FAIL"; fi
 exit "$FAIL"

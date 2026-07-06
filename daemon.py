@@ -53,6 +53,15 @@ DEFAULT_CONDENSE_PROMPT = (
     "Do not read code, diffs, file paths, URLs, markdown, bullets, or headings."
 )
 
+CONDENSE_STYLE_PROMPTS = {
+    "clean": "Style: clean and direct. No filler words.",
+    "natural": (
+        "Style: natural spoken summary. You may use one light hesitation marker "
+        "only if it helps the sentence feel conversational."
+    ),
+    "radio": "Style: crisp radio check. Short, clear, and a little more present.",
+}
+
 CATALOG_VOICES = (
     "alba", "anna", "azelma", "bill_boerst", "caro_davy", "charles", "cosette",
     "eponine", "estelle", "eve", "fantine", "george", "giovanni", "jane",
@@ -219,6 +228,7 @@ CONFIG_SPEC = {
     "condense_provider": {"default": "deepseek", "kind": "condense_provider"},
     "condense_model": {"default": "deepseek-v4-flash", "kind": "str"},
     "condense_timeout_s": {"default": 12, "kind": "int", "min": 2, "max": 60},
+    "speech_style": {"default": "clean", "kind": "speech_style"},
     "rate": {"default": 1.0, "kind": "float", "min": 0.5, "max": 3.0},
     "volume": {"default": 1.0, "kind": "float", "min": 0.0, "max": 1.0},
     "temperature": {"default": 0.7, "kind": "float", "min": 0.1, "max": 1.5},
@@ -393,6 +403,11 @@ def validate_field(key: str, value):
         if value not in {"deepseek", "none"}:
             raise ValueError(key)
         return value
+    if kind == "speech_style":
+        value = str(value).strip().lower()
+        if value not in CONDENSE_STYLE_PROMPTS:
+            raise ValueError(key)
+        return value
     raise ValueError(key)
 
 
@@ -554,11 +569,15 @@ def condense(text: str) -> str | None:
         token = env.get("ANTHROPIC_AUTH_TOKEN")
         if not token:
             return None
+        style = CONDENSE_STYLE_PROMPTS.get(
+            config.get("speech_style", "clean"), CONDENSE_STYLE_PROMPTS["clean"]
+        )
+        system_prompt = f"{config['condense_prompt']}\n\n{style}"
         body = {
             "model": config.get("condense_model") or "deepseek-v4-flash",
             "max_tokens": 1000,
             "messages": [
-                {"role": "system", "content": config["condense_prompt"]},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": text},
             ],
         }
