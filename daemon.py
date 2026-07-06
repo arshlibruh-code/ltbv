@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
+import base64
+import binascii
 import json
 import os
 import queue
 import re
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -12,6 +15,7 @@ import traceback
 import urllib.parse
 import urllib.request
 import wave
+from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -28,7 +32,14 @@ PREFIX_TEMPLATES = ("In {project}: ", "From {project}: ", "Update from {project}
 LOG_PATH = ROOT / ".voice.log"
 CONFIG_PATH = ROOT / "config.json"
 CONTROLLER_PATH = ROOT / "controller.html"
+RING_DIR = ROOT / ".clips"
+VOICES_DIR = ROOT / "voices"
 AUDITION_TEXT = "This is {voice}, speaking for your coding agents."
+FFPLAY = shutil.which("ffplay")
+FFMPEG = shutil.which("ffmpeg")
+RING_SIZE = 5
+PEAK_TARGET = 160
+SAMPLE_RATE = 24000
 
 DEFAULT_CONDENSE_PROMPT = (
     "You are speaking for a coding agent after it finishes a turn. "
@@ -39,12 +50,28 @@ DEFAULT_CONDENSE_PROMPT = (
     "If the reply mostly contains a table, say that a table was made and invite the user to inspect it."
 )
 
-VOICE_CATALOG = (
+CATALOG_VOICES = (
     "alba", "anna", "azelma", "bill_boerst", "caro_davy", "charles", "cosette",
     "eponine", "estelle", "eve", "fantine", "george", "giovanni", "jane",
     "javert", "jean", "juergen", "lola", "marius", "mary", "michael", "paul",
     "peter_yearsley", "rafael", "stuart_bell", "vera",
 )
+
+
+def custom_voices() -> list:
+    try:
+        return sorted(p.stem for p in VOICES_DIR.glob("*.wav"))
+    except Exception:
+        return []
+
+
+def all_voices() -> list:
+    return list(CATALOG_VOICES) + [v for v in custom_voices() if v not in CATALOG_VOICES]
+
+
+def voice_source(name: str) -> str:
+    custom = VOICES_DIR / f"{name}.wav"
+    return str(custom) if custom.exists() else name
 
 CONFIG_SPEC = {
     "max_direct_chars": {"default": 400, "kind": "int", "min": 50, "max": 5000},
@@ -60,6 +87,7 @@ CONFIG_SPEC = {
         "kind": "voices",
     },
     "condense_prompt": {"default": DEFAULT_CONDENSE_PROMPT, "kind": "str"},
+    "stream_playback": {"default": True, "kind": "bool"},
 }
 
 
@@ -93,6 +121,7 @@ sse_subscribers = []
 sse_lock = threading.Lock()
 recent_projects = {}
 prefix_counter = 0
+clip_ring = OrderedDict()
 
 config = {key: spec["default"] for key, spec in CONFIG_SPEC.items()}
 
@@ -171,6 +200,10 @@ def validate_field(key: str, value):
         if not value:
             raise ValueError(key)
         return value
+    if kind == "bool":
+        if not isinstance(value, bool):
+            raise ValueError(key)
+        return value
     if kind == "quiet":
         if value is None:
             return None
@@ -185,8 +218,9 @@ def validate_field(key: str, value):
         return {"start": start, "end": end}
     if kind == "voices":
         merged = dict(spec["default"])
+        catalog = set(all_voices())
         for slot, name in dict(value).items():
-            if slot not in merged or name not in VOICE_CATALOG:
+            if slot not in merged or name not in catalog:
                 raise ValueError(key)
             merged[slot] = name
         return merged
@@ -461,7 +495,7 @@ def load_pocket():
 def voice_state_for(name: str):
     model = load_pocket()
     if name not in tts_voice_states:
-        tts_voice_states[name] = model.get_state_for_audio_prompt(name)
+        tts_voice_states[name] = model.get_state_for_audio_prompt(voice_source(name))
     return tts_voice_states[name]
 
 
@@ -483,33 +517,6 @@ def is_stale(key, gen: int) -> bool:
     return generation_for(key) != gen
 
 
-def synthesize(text: str, gen: int, key, voice: str) -> Path | None:
-    if ENGINE != "pocket":
-        return None
-    model = load_pocket()
-    voice_state = voice_state_for(voice)
-    chunks = []
-    for chunk in model.generate_audio_stream(
-        model_state=voice_state, text_to_generate=text
-    ):
-        with state_lock:
-            if is_stale(key, gen):
-                return None
-        chunks.append(chunk)
-    fd, name = tempfile.mkstemp(prefix="ltbv-", suffix=".wav")
-    os.close(fd)
-    path = Path(name)
-    with wave.open(str(path), "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(model.sample_rate)
-        for chunk in chunks:
-            data = chunk.detach().cpu().clamp(-1, 1).numpy()
-            pcm = (data * 32767).astype("<i2").tobytes()
-            wav.writeframes(pcm)
-    return path
-
-
 def take_active_player():
     global active_player, active_cwd
     player = active_player
@@ -518,52 +525,193 @@ def take_active_player():
     return player
 
 
-def afplay_args(path: Path) -> list:
-    args = ["afplay"]
+def downsample_peaks(peaks: list, target: int = PEAK_TARGET) -> list:
+    if len(peaks) <= target:
+        return [round(p, 3) for p in peaks]
+    step = len(peaks) / target
+    out = []
+    for i in range(target):
+        lo = int(i * step)
+        hi = max(lo + 1, int((i + 1) * step))
+        out.append(round(max(peaks[lo:hi]), 3))
+    return out
+
+
+def player_proc(path: Path):
+    """Play a finished wav. Prefer ffplay for clean tempo (no pitch shift),
+    fall back to afplay. atempo keeps pitch; afplay -r shifts it slightly."""
     rate = float(config["rate"])
-    volume = float(config["volume"])
+    vol = float(config["volume"])
+    if FFPLAY and config.get("stream_playback", True):
+        af = f"atempo={min(2.0, max(0.5, rate))},volume={vol}"
+        return subprocess.Popen(
+            [FFPLAY, "-nodisp", "-autoexit", "-loglevel", "quiet", "-af", af, str(path)],
+            start_new_session=True,
+        )
+    args = ["afplay"]
     if abs(rate - 1.0) > 1e-6:
         args += ["-r", str(rate)]
-    if volume < 0.999:
-        args += ["-v", str(volume)]
+    if vol < 0.999:
+        args += ["-v", str(vol)]
     args.append(str(path))
-    return args
+    return subprocess.Popen(args, start_new_session=True)
 
 
-def play(path: Path, gen: int, key, cwd: str | None, text: str = "", voice: str = "", kind: str = "reply") -> None:
+def ring_put(clip_id: str, path: Path) -> None:
+    clip_ring[clip_id] = path
+    while len(clip_ring) > RING_SIZE:
+        _, old = clip_ring.popitem(last=False)
+        try:
+            old.unlink()
+        except OSError:
+            pass
+
+
+def write_wav(path: Path, pcm_frames: list) -> None:
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(SAMPLE_RATE)
+        for pcm in pcm_frames:
+            wav.writeframes(pcm)
+
+
+def speak(text: str, gen: int, key, cwd: str | None, voice: str, kind: str) -> str | None:
+    """Synthesize fully, then play the finished clip the moment it is ready.
+    Ships a waveform + duration for the Stage and keeps the clip for replay.
+    Returns a clip id, or None if the job went stale or synthesis failed."""
     global active_player, active_cwd, last_spoken_ts, now_speaking
+    if ENGINE != "pocket":
+        return None
+    model = load_pocket()
+    voice_state = voice_state_for(voice)
+
+    pcm_frames = []
+    peaks = []
+    total_samples = 0
+    try:
+        for chunk in model.generate_audio_stream(
+            model_state=voice_state, text_to_generate=text
+        ):
+            with state_lock:
+                if is_stale(key, gen):
+                    return None
+            data = chunk.detach().cpu().clamp(-1, 1).numpy()
+            peaks.append(float(abs(data).max()))
+            total_samples += len(data)
+            pcm_frames.append((data * 32767).astype("<i2").tobytes())
+    except Exception:
+        log_error("synthesize")
+        return None
+
+    clip_id = str(int(time.time() * 1000))
+    clip_path = RING_DIR / f"{clip_id}.wav"
+    try:
+        RING_DIR.mkdir(exist_ok=True)
+        write_wav(clip_path, pcm_frames)
+        ring_put(clip_id, clip_path)
+    except Exception:
+        log_error("ring_write")
+
+    duration = total_samples / SAMPLE_RATE / min(2.0, max(0.5, float(config["rate"])))
+
     with state_lock:
         if is_stale(key, gen):
-            try:
-                path.unlink()
-            except OSError:
-                pass
-            return
-        active_player = subprocess.Popen(afplay_args(path), start_new_session=True)
+            return None
+        proc = player_proc(clip_path)
+        active_player = proc
         active_cwd = cwd
         last_spoken_ts = time.time()
         now_speaking = {
-            "text": text[:240],
-            "voice": voice,
-            "kind": kind,
-            "project": project_name(cwd),
-            "ts": last_spoken_ts,
+            "text": text[:240], "voice": voice, "kind": kind,
+            "project": project_name(cwd), "ts": last_spoken_ts,
         }
-        player = active_player
     publish({"event": "now", "on": True, **now_speaking})
+    publish({
+        "event": "wave", "peaks": downsample_peaks(peaks),
+        "duration": round(duration, 2), "clip": clip_id,
+    })
+    _finish(proc)
+    return clip_id
+
+
+def _finish(proc) -> None:
+    global active_player, active_cwd, now_speaking
     try:
-        player.wait()
+        if proc and proc.stdin:
+            try:
+                proc.stdin.close()
+            except OSError:
+                pass
+        if proc:
+            proc.wait()
     finally:
         with state_lock:
-            if active_player is player:
+            if active_player is proc:
                 active_player = None
                 active_cwd = None
             now_speaking = None
         publish({"event": "now", "on": False})
+
+
+def replay(clip_id: str) -> bool:
+    path = clip_ring.get(clip_id)
+    if not path or not path.exists():
+        return False
+    player_proc(path)
+    return True
+
+
+def clone_voice(name: str, audio_b64: str) -> tuple[bool, str]:
+    if not re.fullmatch(r"[a-z0-9_]{2,24}", name or ""):
+        return False, "name must be 2-24 chars of a-z, 0-9, underscore"
+    if name in CATALOG_VOICES:
+        return False, "name collides with a catalog voice"
+    try:
+        raw = base64.b64decode(audio_b64, validate=True)
+    except (binascii.Error, ValueError):
+        return False, "audio was not valid base64"
+    if len(raw) < 8000:
+        return False, "recording too short"
+    VOICES_DIR.mkdir(exist_ok=True)
+    src = VOICES_DIR / f"{name}.src"
+    dst = VOICES_DIR / f"{name}.wav"
+    src.write_bytes(raw)
+    try:
+        if not FFMPEG:
+            return False, "ffmpeg not found, cannot convert the recording"
+        conv = subprocess.run(
+            [FFMPEG, "-y", "-i", str(src), "-ac", "1", "-ar", str(SAMPLE_RATE), str(dst)],
+            capture_output=True, timeout=30,
+        )
+        if conv.returncode != 0 or not dst.exists():
+            return False, "could not decode that audio file"
         try:
-            path.unlink()
-        except OSError:
-            pass
+            load_pocket().get_state_for_audio_prompt(str(dst))
+        except Exception as exc:
+            dst.unlink(missing_ok=True)
+            msg = str(exc)
+            if "voice cloning" in msg or "download the weights" in msg:
+                return False, "cloning locked: accept terms at huggingface.co/kyutai/pocket-tts and run hf auth login"
+            return False, "could not build a voice from that audio"
+        tts_voice_states.pop(name, None)
+        return True, name
+    finally:
+        src.unlink(missing_ok=True)
+
+
+def delete_voice(name: str) -> bool:
+    dst = VOICES_DIR / f"{name}.wav"
+    if name in CATALOG_VOICES or not dst.exists():
+        return False
+    dst.unlink(missing_ok=True)
+    tts_voice_states.pop(name, None)
+    defaults = CONFIG_SPEC["voices"]["default"]
+    for slot, voice in list(config["voices"].items()):
+        if voice == name:
+            config["voices"][slot] = defaults.get(slot, "alba")
+    save_config()
+    return True
 
 
 def pick_job_locked() -> dict:
@@ -615,8 +763,8 @@ def process_job(job: dict) -> None:
         )
         return
     voice = voice_for_job(job)
-    wav_path = synthesize(text, gen, key, voice)
-    if wav_path is not None:
+    clip_id = speak(text, gen, key, cwd, voice, kind)
+    if clip_id is not None:
         append_log(
             "speak",
             cwd=cwd,
@@ -626,9 +774,9 @@ def process_job(job: dict) -> None:
             prefixed=prefixed,
             prefix=prefix.strip(),
             spoken_chars=len(text),
+            clip=clip_id,
             **meta,
         )
-        play(wav_path, gen, key, cwd, text=text, voice=voice, kind=kind)
 
 
 def worker() -> None:
@@ -807,14 +955,20 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if route == "/config":
                 json_response(
-                    self, 200, {"ok": True, "config": config, "catalog": VOICE_CATALOG}
+                    self, 200, {"ok": True, "config": config, "catalog": all_voices()}
                 )
                 return
             if route == "/voices":
                 json_response(
                     self,
                     200,
-                    {"ok": True, "voices": VOICE_CATALOG, "assigned": config["voices"]},
+                    {
+                        "ok": True,
+                        "voices": all_voices(),
+                        "custom": custom_voices(),
+                        "assigned": config["voices"],
+                        "clone_ready": bool(FFMPEG),
+                    },
                 )
                 return
             if route == "/log/tail":
@@ -865,7 +1019,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/audition":
                 data = read_json(self)
                 voice = data.get("voice")
-                if voice not in VOICE_CATALOG:
+                if voice not in all_voices():
                     json_response(self, 400, {"ok": False, "error": "unknown_voice"})
                     return
                 text = data.get("text") or AUDITION_TEXT.format(voice=voice.replace("_", " "))
@@ -873,6 +1027,26 @@ class Handler(BaseHTTPRequestHandler):
                     text, None, kind="audition", voice=voice, prepared=True
                 )
                 json_response(self, 202, {"ok": True, "generation": gen})
+                return
+            if self.path == "/replay":
+                data = read_json(self)
+                ok = replay(str(data.get("clip", "")))
+                json_response(self, 200 if ok else 404, {"ok": ok})
+                return
+            if self.path == "/clone":
+                data = read_json(self)
+                if data.get("delete"):
+                    ok = delete_voice(data.get("name", ""))
+                    if ok:
+                        publish({"event": "config"})
+                    json_response(self, 200 if ok else 404, {"ok": ok})
+                    return
+                ok, result = clone_voice(data.get("name", ""), data.get("audio", ""))
+                if ok:
+                    publish({"event": "config"})
+                    json_response(self, 200, {"ok": True, "voice": result})
+                else:
+                    json_response(self, 400, {"ok": False, "error": result})
                 return
             if self.path == "/recondense":
                 if not last_stages or not last_stages.get("raw"):

@@ -7,3 +7,5 @@ __pycache__/
 .voice-disabled
 config.json
 bench/
+.clips/
+voices/

@@ -91,6 +91,24 @@ sleep 2
 if [ "$(log_count speak "$SINCE")" -eq 0 ]; then pass "kill switch blocks"; else fail "kill switch blocks"; fi
 rm -f "$KILL"
 
+# 5b. replay: the last clip in the log must replay
+CLIP=$("$PY" - <<'EOF'
+import json
+clip=""
+try:
+    for line in open(".voice.log"):
+        try: d=json.loads(line)
+        except Exception: continue
+        if d.get("event")=="speak" and d.get("clip"): clip=d["clip"]
+except FileNotFoundError: pass
+print(clip)
+EOF
+)
+if [ -n "$CLIP" ] && curl -sf -m 2 -X POST "$BASE/replay" -d "{\"clip\":\"$CLIP\"}" | grep -q '"ok": true'; then pass "replay clip"; else fail "replay clip"; fi
+
+# 5c. clone rejects a bad name without touching the system
+if curl -s -m 2 -X POST "$BASE/clone" -d '{"name":"BAD NAME","audio":""}' | grep -q '"ok": false'; then pass "clone guard"; else fail "clone guard"; fi
+
 # 6. config roundtrip
 REV=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["config"]["max_direct_chars"])')
 curl -sf -m 2 -X POST "$BASE/config" -d '{"max_direct_chars": 401}' >/dev/null

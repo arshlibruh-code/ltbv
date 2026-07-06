@@ -69,7 +69,9 @@
     @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.7); } }
     #now-meta { font-family: var(--mono); font-size: 10px; color: var(--muted); flex: none; text-transform: uppercase; letter-spacing: 0.05em; }
     #now-meta b { color: var(--text); font-weight: 400; }
+    #stage { flex: none; width: 220px; height: 30px; }
     #now-text { flex: 1; min-width: 0; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    @media (max-width: 720px) { #stage { display: none; } }
 
     /* ---------- layout ---------- */
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
@@ -172,10 +174,17 @@
     }
     .chip .cdots { display: inline-flex; gap: 3px; }
     .chip button { padding: 2px 7px; font-size: 9px; }
+    .clone { margin-top: 12px; }
+    .clone-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+    #clone-name { flex: 1; min-width: 120px; background: var(--ink); border: 1px solid var(--line); color: var(--text); padding: 4px 6px; font-size: 11px; }
     .dropzone {
-      margin-top: 12px; padding: 11px; border: 1px dashed var(--line-soft); color: var(--faint);
+      padding: 11px; border: 1px dashed var(--line-soft); color: var(--faint);
       font-size: 10px; text-align: center; font-family: var(--mono); letter-spacing: 0.03em;
     }
+    .dropzone.hot { border-color: var(--blue); color: var(--blue); }
+    .dropzone.rec { border-color: var(--red); color: var(--red); }
+    .chip .cx { padding: 2px 6px; font-size: 9px; color: var(--faint); }
+    .chip .cx:hover { color: var(--red); }
 
     /* ---------- ledger ---------- */
     .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
@@ -226,6 +235,7 @@
     <div id="nowstrip">
       <i class="pulse"></i>
       <span id="now-meta"></span>
+      <canvas id="stage" title="live waveform"></canvas>
       <span id="now-text"></span>
       <button class="btn danger" id="now-stop">stop</button>
     </div>
@@ -291,8 +301,16 @@
             </div>
             <div class="pane-title"><span>catalog</span><span id="lab-state"></span></div>
             <div class="chips" id="catalog"></div>
-            <div class="dropzone">voice cloning dormant · accept terms at huggingface.co/kyutai/pocket-tts + hf auth login, then this becomes a drop-a-wav zone</div>
-            <div class="err-line" id="err-lab"></div>
+            <div class="clone">
+              <div class="clone-row">
+                <input type="text" id="clone-name" placeholder="new voice name" maxlength="24">
+                <button class="btn" id="clone-rec">record 15s</button>
+                <label class="btn" for="clone-file">drop / pick a wav</label>
+                <input type="file" id="clone-file" accept="audio/*" hidden>
+              </div>
+              <div id="clone-drop" class="dropzone">drop an audio file here, or record yourself, to mint a new voice</div>
+              <div class="err-line" id="err-lab"></div>
+            </div>
           </div>
         </section>
 
@@ -381,16 +399,45 @@
       } catch { $("dot").classList.remove("on"); }
     }
 
-    // ---------- now speaking strip ----------
+    // ---------- now speaking strip + stage waveform ----------
+    let stageWave = null, stageStart = 0, stageDur = 0, stageRAF = null;
     function setNow(now) {
       const on = !!(now && now.text);
       $("nowstrip").classList.toggle("on", on);
       if (on) {
         $("now-meta").innerHTML = `<b>${now.voice || "?"}</b> · ${now.kind || "reply"}${now.project ? " · " + now.project : ""}`;
         $("now-text").textContent = now.text;
+      } else {
+        stageWave = null;
+        if (stageRAF) cancelAnimationFrame(stageRAF);
       }
       auditionPlaying = on && now.kind === "audition";
       setLabButtons();
+    }
+    function startStage(peaks, duration) {
+      stageWave = peaks; stageDur = duration; stageStart = performance.now();
+      if (stageRAF) cancelAnimationFrame(stageRAF);
+      drawStage();
+    }
+    function drawStage() {
+      const cv = $("stage"), ctx = cv.getContext("2d");
+      const dpr = window.devicePixelRatio || 1;
+      const W = cv.clientWidth, H = cv.clientHeight;
+      if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      if (!stageWave || !stageWave.length) return;
+      const n = stageWave.length, bw = W / n, mid = H / 2;
+      const prog = stageDur > 0 ? Math.min(1, (performance.now() - stageStart) / (stageDur * 1000)) : 1;
+      for (let i = 0; i < n; i++) {
+        const h = Math.max(1, stageWave[i] * (H - 2));
+        ctx.fillStyle = (i / n) <= prog ? "#58d68d" : "#3a4650";
+        ctx.fillRect(i * bw, mid - h / 2, Math.max(1, bw - 0.5), h);
+      }
+      const px = prog * W;
+      ctx.fillStyle = "#e8e8e8";
+      ctx.fillRect(px, 0, 1, H);
+      if (prog < 1) stageRAF = requestAnimationFrame(drawStage);
     }
 
     // ---------- scrub controls ----------
@@ -653,6 +700,8 @@
     // ---------- voice lab ----------
     let auditionPlaying = false;
     let assigned = {};
+    let voiceList = [];
+    let customSet = new Set();
     function setLabButtons() {
       document.querySelectorAll("#catalog .btn, [data-audition]").forEach((b) => { b.disabled = auditionPlaying; });
       $("lab-state").textContent = auditionPlaying ? "auditioning…" : "";
@@ -660,8 +709,11 @@
     async function initVoices() {
       const v = await api("/voices");
       assigned = v.assigned;
+      voiceList = v.voices;
+      customSet = new Set(v.custom || []);
       for (const slot of ["claude", "codex", "notification"]) {
         const sel = $("voice-" + slot);
+        const prev = sel.value;
         sel.innerHTML = "";
         for (const name of v.voices) {
           const o = document.createElement("option");
@@ -669,24 +721,27 @@
           sel.appendChild(o);
         }
         sel.value = assigned[slot];
-        sel.addEventListener("change", () => {
-          const voices = {};
-          for (const s of ["claude", "codex", "notification"]) voices[s] = $("voice-" + s).value;
-          assigned = voices;
-          renderCatalog(v.voices);
-          pushConfig({ voices }, null, "err-lab");
-        });
+        if (!sel._wired) {
+          sel.addEventListener("change", () => {
+            const voices = {};
+            for (const s of ["claude", "codex", "notification"]) voices[s] = $("voice-" + s).value;
+            assigned = voices;
+            renderCatalog();
+            pushConfig({ voices }, null, "err-lab");
+          });
+          sel._wired = true;
+        }
       }
-      renderCatalog(v.voices);
+      renderCatalog();
       document.querySelectorAll("[data-audition]").forEach((b) => {
         b.onclick = () => api("/audition", { voice: $("voice-" + b.dataset.audition).value });
       });
     }
-    function renderCatalog(names) {
+    function renderCatalog() {
       const cat = $("catalog");
       cat.innerHTML = "";
       const slotOf = (n) => Object.entries(assigned).filter(([, v]) => v === n).map(([s]) => s);
-      const ordered = [...names].sort((a, b) => (slotOf(b).length - slotOf(a).length) || a.localeCompare(b));
+      const ordered = [...voiceList].sort((a, b) => (slotOf(b).length - slotOf(a).length) || a.localeCompare(b));
       for (const name of ordered) {
         const chip = document.createElement("span");
         chip.className = "chip";
@@ -697,10 +752,56 @@
         b.className = "btn"; b.textContent = "play";
         b.onclick = () => api("/audition", { voice: name });
         chip.appendChild(b);
+        if (customSet.has(name)) {
+          const x = document.createElement("button");
+          x.className = "cx"; x.textContent = "×"; x.title = "delete custom voice";
+          x.onclick = () => api("/clone", { name, delete: true }).then(initVoices);
+          chip.appendChild(x);
+        }
         cat.appendChild(chip);
       }
       setLabButtons();
     }
+
+    // ---------- clone ----------
+    async function submitClone(blob) {
+      const name = $("clone-name").value.trim().toLowerCase().replace(/\s+/g, "_");
+      if (!/^[a-z0-9_]{2,24}$/.test(name)) { $("err-lab").textContent = "pick a name: 2-24 chars, a-z 0-9 _"; return; }
+      $("err-lab").textContent = "building voice…";
+      const buf = await blob.arrayBuffer();
+      let bin = ""; const bytes = new Uint8Array(buf);
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      const out = await api("/clone", { name, audio: btoa(bin) });
+      if (out.ok) { $("err-lab").textContent = ""; $("clone-name").value = ""; await initVoices(); api("/audition", { voice: out.voice }); }
+      else $("err-lab").textContent = out.error || "clone failed";
+    }
+    (() => {
+      const drop = $("clone-drop");
+      $("clone-file").addEventListener("change", (e) => { if (e.target.files[0]) submitClone(e.target.files[0]); });
+      ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("hot"); }));
+      ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("hot"); }));
+      drop.addEventListener("drop", (e) => { if (e.dataTransfer.files[0]) submitClone(e.dataTransfer.files[0]); });
+
+      let rec = null, chunks = [];
+      $("clone-rec").addEventListener("click", async () => {
+        if (rec && rec.state === "recording") { rec.stop(); return; }
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          rec = new MediaRecorder(stream);
+          chunks = [];
+          rec.ondataavailable = (e) => chunks.push(e.data);
+          rec.onstop = () => {
+            stream.getTracks().forEach((t) => t.stop());
+            $("clone-rec").textContent = "record 15s"; drop.classList.remove("rec");
+            submitClone(new Blob(chunks, { type: rec.mimeType }));
+          };
+          rec.start();
+          $("clone-rec").textContent = "stop";
+          drop.classList.add("rec"); drop.textContent = "recording… speak naturally, click stop when done";
+          setTimeout(() => { if (rec && rec.state === "recording") rec.stop(); }, 15000);
+        } catch { $("err-lab").textContent = "mic access denied"; }
+      });
+    })();
 
     // ---------- ledger ----------
     function renderLedger() {
@@ -733,7 +834,9 @@
           const size = Math.max(4, Math.min(14, (e.spoken_chars || 0) / 60));
           blip.style.left = ((1 - (nowS - e.ts) / span) * 100) + "%";
           blip.style.width = blip.style.height = size + "px";
-          blip.title = new Date(e.ts * 1000).toLocaleTimeString() + " · " + (e.spoken_chars || 0) + " chars" + (e.voice ? " · " + e.voice : "");
+          const replayable = !!e.clip;
+          blip.title = new Date(e.ts * 1000).toLocaleTimeString() + " · " + (e.spoken_chars || 0) + " chars" + (e.voice ? " · " + e.voice : "") + (replayable ? " · click to replay" : "");
+          if (replayable) { blip.style.cursor = "pointer"; blip.onclick = () => api("/replay", { clip: e.clip }); }
           track.appendChild(blip);
         }
         lane.append(name, track);
@@ -770,6 +873,7 @@
         let ev; try { ev = JSON.parse(m.data); } catch { return; }
         if (ev.event === "hello") { setNow(ev.now); return; }
         if (ev.event === "now") { setNow(ev.on ? ev : null); return; }
+        if (ev.event === "wave") { startStage(ev.peaks, ev.duration); return; }
         if (ev.event === "config") {
           api("/config").then((c) => {
             cfg = c.config;
