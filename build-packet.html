@@ -271,7 +271,7 @@
           <span class="pill">Python <span class="num">3.11</span> + uv</span>
           <span class="pill">TTS: Pocket default · Kokoro benched</span>
           <span class="pill">Daemon <span class="num">:7333</span></span>
-          <span class="pill">M3 · <span class="num">16GB</span> · codex <span class="num">0.142.5</span></span>
+          <span class="pill">macOS · local daemon · codex <span class="num">0.142.5</span></span>
         </div>
         <div class="actions">
           <button class="btn" data-copy="#codex-prompt">Copy Codex prompt</button>
@@ -478,11 +478,11 @@
   "hooks": {
     "Stop": [{ "hooks": [{
       "type": "command",
-      "command": "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/python /Users/arshad/Desktop/personal/code/let-there-be-voice/hook.py"
+      "command": "$REPO/.venv/bin/python $REPO/hook.py"
     }]}],
     "UserPromptSubmit": [{ "hooks": [{
       "type": "command",
-      "command": "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/python /Users/arshad/Desktop/personal/code/let-there-be-voice/hook.py"
+      "command": "$REPO/.venv/bin/python $REPO/hook.py"
     }]}]
   }
 }</pre>
@@ -493,13 +493,13 @@
 
 [[hooks.Stop.hooks]]
 type = "command"
-command = "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/python /Users/arshad/Desktop/personal/code/let-there-be-voice/hook.py"
+command = "$REPO/.venv/bin/python $REPO/hook.py"
 
 [[hooks.UserPromptSubmit]]
 
 [[hooks.UserPromptSubmit.hooks]]
 type = "command"
-command = "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/python /Users/arshad/Desktop/personal/code/let-there-be-voice/hook.py"</pre>
+command = "$REPO/.venv/bin/python $REPO/hook.py"</pre>
           </div>
         </div>
       </section>
@@ -515,7 +515,7 @@ command = "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/pyth
               <tr><td>Long responses</td><td>Configured summarizer condense, DeepSeek by default, in the daemon</td><td>Credits already there, Anthropic-compatible endpoint, token in <code>settings.deepseek.json</code>. Moved out of the hook after Codex review (2026-07-05): network in the hook breaks the <span class="num">100ms</span> invariant.</td></tr>
               <tr><td>Bench order</td><td>Pocket, Kokoro, Supertonic</td><td>Revised 2026-07-06: Kokoro first after the abstraction, then Supertonic only after the Kokoro shootout works end to end.</td></tr>
               <tr><td>Voice</td><td>Stock preset, calm, slightly fast</td><td>Simplest first. Cloning and variants later, maybe never.</td></tr>
-              <tr><td>Daemon lifecycle</td><td>Spawn-on-first-hook, <span class="num">10</span> min idle exit</td><td><span class="num">16GB</span> machine running Codex + Claude + browser. No forever-resident model.</td></tr>
+              <tr><td>Daemon lifecycle</td><td>Spawn-on-first-hook, <span class="num">10</span> min idle exit</td><td>A local developer machine may already be running agents and a browser. No forever-resident model.</td></tr>
               <tr><td>Voice input</td><td>Out of scope</td><td>Hex already does local Parakeet STT.</td></tr>
               <tr><td>TTS engine</td><td>Pocket default, Kokoro optional</td><td>Kokoro shootout shipped. Warm result on the same sentence: Pocket RTF <span class="num">0.160</span>, Kokoro RTF <span class="num">0.096</span>. Pocket remains default until a winner is picked.</td></tr>
               <tr><td>SHUT UP</td><td><code>.voice-disabled</code> file in repo root</td><td>Zero config, greppable, no daemon restart. Hook checks it before anything else.</td></tr>
@@ -524,7 +524,7 @@ command = "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/pyth
               <tr><td>Condense failure</td><td>Audible failure line, superseded: first sentence + note (Phase 5)</td><td>Audible beat silent, but losing the content entirely was worse than a degraded summary.</td></tr>
               <tr><td>Project prefix</td><td>Rotating In X / From X / Update from X when <span class="num">2+</span> projects inside <span class="num">10</span> min</td><td>The ear needs a namespace when two agents talk; rotation keeps it from sounding robotic.</td></tr>
               <tr><td>Config UI</td><td><code>controller.html</code>, Phase 6 (2026-07-06)</td><td>The taste knobs turned out to be the product. Amends the 2026-07-05 "no config UI" invariant deliberately: the controller tunes, the daemon decides.</td></tr>
-              <tr><td>Voice</td><td>Catalog voices + per-agent assignment; cloning plumbing built, gated</td><td>The <span class="num">26</span>-voice catalog ships now. Cloning (drop-a-wav / record-in-browser) works end to end but needs the gated HF weights, so it degrades to an actionable "run hf auth login" message until Arshad does the one-time dance.</td></tr>
+              <tr><td>Voice</td><td>Catalog voices + per-agent assignment; cloning plumbing built, gated</td><td>The <span class="num">26</span>-voice catalog ships now. Cloning (drop-a-wav / record-in-browser) works end to end but needs the gated HF weights, so it degrades to an actionable setup message until the one-time auth step is done.</td></tr>
               <tr><td>Playback engine</td><td>ffplay atempo, play on synthesis-complete (2026-07-06)</td><td>ffplay <code>atempo</code> changes speed without pitch-shifting (afplay <code>-r</code> shifts). True mid-synthesis PCM streaming was cut: ffplay's pipe exits early once buffered and truncates audio, and the latency win was marginal because condensing keeps replies short.</td></tr>
               <tr><td>Live UI</td><td>SSE stream, not polling (controller v2)</td><td>One stdlib <code>text/event-stream</code> faucet pushes speak / now / wave events; the browser's <code>EventSource</code> auto-reconnects. Replaced the <span class="num">5s</span> poll so blips and the waveform land instantly.</td></tr>
             </tbody>
@@ -541,7 +541,7 @@ command = "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/pyth
               <tbody>
                 <tr><td><code>last_assistant_message</code> present but unpopulated at runtime</td><td>Resolved 2026-07-05: real Stop payloads dumped from both CLIs, populated.</td></tr>
                 <tr><td>Pocket TTS fails the ear test</td><td>Resolved: passed the gate and the ear, live since 2026-07-05.</td></tr>
-                <tr><td>Concurrent replies drop: single pending slot, two projects finish close together</td><td>Log-proven usage pattern (hire + let-there-be-voice interleaved all evening). Phase 5: per-project pending map.</td></tr>
+                <tr><td>Concurrent replies drop: single pending slot, two projects finish close together</td><td>Log-proven usage pattern: multiple repos can finish agent turns close together. Phase 5: per-project pending map.</td></tr>
                 <tr><td>Un-condensed walls of speech: <span class="num">10</span> of <span class="num">29</span> speaks were <span class="num">400-913</span> chars raw</td><td>Phase 5 drops the threshold to <span class="num">400</span> so the summarizer fires far more often.</td></tr>
                 <tr><td>First utterance after idle exit</td><td>Model reload means the first response after <span class="num">10</span> min quiet will miss the <span class="num">1s</span> target. Accepted tradeoff, not a bug.</td></tr>
                 <tr><td>Summarizer down or slow</td><td>Speak the first sentence instead. Never wait, never error.</td></tr>
@@ -566,7 +566,7 @@ command = "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/pyth
       <section id="field-data">
         <div class="section-head"><span class="idx">10</span><h2>Field Data</h2><p>First real week, from <code>.voice.log</code>, 2026-07-05/06.</p></div>
         <div class="grid cols-5">
-          <div class="card pad metric"><b><span class="num">29</span> speaks</b><span>Across two projects, hire and let-there-be-voice, heavily interleaved.</span></div>
+          <div class="card pad metric"><b><span class="num">29</span> speaks</b><span>Across two projects, heavily interleaved.</span></div>
           <div class="card pad metric"><b><span class="num">207</span> median chars</b><span>The typical reply is short enough to speak directly. The median is healthy.</span></div>
           <div class="card pad metric"><b><span class="num">913</span> max raw</b><span>Longest un-condensed utterance: roughly a minute of narration. The tail is the problem.</span></div>
           <div class="card pad metric"><b><span class="num">10/29</span> over 400</b><span>A third of all speaks were 400+ chars read verbatim because the threshold sits at <span class="num">1000</span>.</span></div>
@@ -763,7 +763,7 @@ run, so self-check relentlessly and never leave the tree broken):
     Notification hook from task 7 actually fires on a real permission
     prompt and speaks. Then investigate whether Codex CLI has an equivalent
     event (notify config, hooks); wire it identically if yes. Record what
-    you found either way in NIGHT-REPORT.md.
+    you found either way in the implementation notes.
 
 18. Notification priority: a "needs your input" line queue-jumps. It never
     waits behind a long reply mid-playback in another project: it speaks
@@ -790,16 +790,16 @@ run, so self-check relentlessly and never leave the tree broken):
 22. Temperature knob: expose Pocket's TTS temperature (default 0.7) in
     config.json and as a Mixing Desk slider. It is passed at generation
     time; confirm pocket_tts generate_audio_stream accepts it and wire it
-    through, else note the limitation in NIGHT-REPORT.md and skip.
+    through, else note the limitation in the implementation notes and skip.
 
 23. Docs true-up, last task of the night: update CLAUDE.md to post-run
     reality (endpoints, config.json, controller, smoke.sh, voicectl, quiet
     hours), and stamp the running git rev into /health so "which daemon
     build is running" is never a guess.
 
-End the night by writing NIGHT-REPORT.md in the repo root: what landed,
-what failed, what you skipped and why, plus anything surprising in the
-logs. Plain prose, short.
+End the pass by writing short implementation notes: what landed, what failed,
+what you skipped and why, plus anything surprising in the logs. Plain prose,
+short.
 
 INVARIANTS, never break these ("no config UI" was amended 2026-07-06 to
 permit exactly this controller, nothing more):
@@ -847,7 +847,7 @@ Phase 6 does. Run smoke.sh before every commit once it exists.</pre>
           <div class="filter-row"><b>Order</b><span>Kokoro first: land the abstraction, wire Kokoro, prove it against Pocket in the shootout. Only then add Supertonic. Never both at once.</span><span class="tag yellow">Sequence</span></div>
           <div class="filter-row"><b>Endpoints</b><span><code>GET /engines</code> (installed / loaded / ram), <code>POST /engine</code> (set active), <code>POST /bench {text}</code> (synth on all installed, return clips + metrics). Audition and speak gain an optional engine.</span><span class="tag blue">Core</span></div>
           <div class="filter-row"><b>Metric</b><span>Real-time factor is the gate: RTF below <span class="num">1.0</span> is faster than realtime. Warm measured on 2026-07-06: Pocket <span class="num">0.160</span>, Kokoro <span class="num">0.096</span>. First Kokoro run included model download/load and was not the warm gate.</span><span class="tag blue">Core</span></div>
-          <div class="filter-row"><b>Rules</b><span>The live voice path never breaks: Pocket stays default until Arshad picks a winner. Engines lazy-load. Stdlib daemon plus the engine packages, nothing more. Controller stays a remote.</span><span class="tag red">Hard</span></div>
+          <div class="filter-row"><b>Rules</b><span>The live voice path never breaks: Pocket stays default until a winner is picked. Engines lazy-load. Stdlib daemon plus the engine packages, nothing more. Controller stays a remote.</span><span class="tag red">Hard</span></div>
         </div>
         <div class="note" style="margin-top:8px">
           Parked from the menu: waveform stack, bench log, latency race, language presets, tradeoff cards. Add only if the itch survives the first shootout.
