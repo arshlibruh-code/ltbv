@@ -182,7 +182,7 @@
     .node b { display: block; margin-bottom: 4px; font-size: 12px; }
     .node span { display: block; color: var(--muted); font-size: 11px; }
 
-    .board { display: grid; grid-template-columns: repeat(7, minmax(140px, 1fr)); gap: 8px; overflow-x: auto; }
+    .board { display: grid; grid-template-columns: repeat(8, minmax(130px, 1fr)); gap: 8px; overflow-x: auto; }
     .phase { min-height: 140px; padding: 10px; border: 1px solid var(--line); background: var(--panel); }
     .phase header { display: flex; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
     .phase h3 { margin: 0; font-size: 12px; }
@@ -247,6 +247,7 @@
       </div>
       <nav class="links" aria-label="Sections">
         <a href="#final-calls">Final Calls <small>01</small></a>
+        <a href="#stack">The Stack <small>01b</small></a>
         <a href="#prd">PRD <small>02</small></a>
         <a href="#architecture">Architecture <small>03</small></a>
         <a href="#speech-policy">Speech Policy <small>04</small></a>
@@ -277,12 +278,29 @@
       </div>
 
       <section id="final-calls">
-        <div class="section-head"><span class="idx">01</span><h2>Final Calls</h2><p>Post-ship. Phases 0-4 live since 2026-07-05, Phase 5 queued.</p></div>
+        <div class="section-head"><span class="idx">01</span><h2>Final Calls</h2><p>Fully shipped. Phases 0-6 plus the night shift and a controller v2 live since 2026-07-06.</p></div>
         <div class="grid cols-4">
           <div class="card pad metric"><b>Capture</b><span>Stop hooks in both CLIs deliver <code>last_assistant_message</code> as JSON on stdin. No PTY, no ANSI parsing, ever.</span></div>
           <div class="card pad metric"><b>TTS</b><span>Pocket TTS won the bench: <span class="num">0.05s</span> warm first-audio, <span class="num">0.41s</span> full synth, <span class="num">921MB</span> RSS. Supertonic and Kokoro never needed. Engine stays one swappable constant.</span></div>
           <div class="card pad metric"><b>Daemon</b><span>Localhost HTTP on <span class="num">7333</span>. Owns cleanup, condense, synthesis, playback. Lazy model load, exits after <span class="num">10</span> min idle.</span></div>
           <div class="card pad metric"><b>Hook</b><span>Dumb forwarder. POSTs raw event + text to the daemon and exits in tens of ms. No network, no logic, no uv resolution: invoked as <code>.venv/bin/python</code> by absolute path.</span></div>
+        </div>
+      </section>
+
+      <section id="stack">
+        <div class="section-head"><span class="idx">01b</span><h2>The Stack</h2><p>What actually runs, and what stays local.</p></div>
+        <div class="card">
+          <table>
+            <thead><tr><th>Layer</th><th>What</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td>TTS engine</td><td>Pocket TTS (kyutai-labs), local on CPU</td><td>A voice-cloning model: every voice is a short reference sample embedded into a voice state. <span class="num">24</span>kHz mono, streams in <span class="num">80</span>ms chunks. No API key, no network, no per-character cost. Warm first-audio <span class="num">0.05s</span>, <span class="num">~921MB</span> resident.</td></tr>
+              <tr><td>Length limit</td><td>None from the engine</td><td>Generation is chunk-streamed, so time scales linearly with text and memory stays flat. Arbitrarily long input works; the <span class="num">400</span>-char condense cap is our taste policy, not a Pocket limit.</td></tr>
+              <tr><td>Condense</td><td>DeepSeek <code>deepseek-v4-flash</code></td><td>The one network call, and only for replies over the threshold. Token from <code>settings.deepseek.json</code>, daemon-side only.</td></tr>
+              <tr><td>Playback</td><td>ffplay (<code>atempo</code>) or afplay</td><td>ffplay preferred for pitch-preserving rate; afplay fallback.</td></tr>
+              <tr><td>Runtime</td><td>Python <span class="num">3.11</span> stdlib + PyTorch</td><td>Daemon is stdlib-only (HTTP, threads, queue, SSE). PyTorch rides in under Pocket. No web framework.</td></tr>
+              <tr><td>Runs local</td><td>Everything except condense</td><td>Synthesis, playback, cloning, config, the controller: all on-device. Only the DeepSeek call leaves the machine.</td></tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -317,11 +335,11 @@
       <section id="speech-policy">
         <div class="section-head"><span class="idx">04</span><h2>Speech Policy</h2><p>Where all the taste lives.</p></div>
         <div class="card">
-          <div class="filter-row"><b>Speak</b><span>Final assistant prose under <span class="num">400</span> chars, after markdown strip. Live code still says <span class="num">1000</span>: Phase 5 item 1 drops it.</span><span class="tag">Yes</span></div>
+          <div class="filter-row"><b>Speak</b><span>Final assistant prose under <span class="num">400</span> chars (live, tunable from the controller), after markdown strip.</span><span class="tag">Yes</span></div>
           <div class="filter-row"><b>Never speak</b><span>Code, diffs, stack traces, raw file paths, URLs verbatim. Markdown tables stripped before anything else; a mostly-table reply becomes a spoken invite to look at it.</span><span class="tag red">No</span></div>
-          <div class="filter-row"><b>Condense</b><span>Over the threshold: <span class="num">2-3</span> natural spoken sentences via <code>deepseek-v4-flash</code>, called by the daemon, never the hook. API fails: today an audible failure line; Phase 5 reverts to first sentence + short note so the content survives.</span><span class="tag yellow">DeepSeek</span></div>
+          <div class="filter-row"><b>Condense</b><span>Over the threshold: <span class="num">2-3</span> natural spoken sentences via <code>deepseek-v4-flash</code>, called by the daemon, never the hook. API fails: speak the first sentence plus a short note so the content survives.</span><span class="tag yellow">DeepSeek</span></div>
           <div class="filter-row"><b>Interrupt</b><span><code>UserPromptSubmit</code> in either CLI posts <code>/stop</code> with its cwd. Only the typing project goes quiet; another project mid-sentence keeps talking.</span><span class="tag blue">Required</span></div>
-          <div class="filter-row"><b>Queue</b><span>One active utterance, one pending slot, newest pending wins. Phase 5: per-project pending map so concurrent projects stop swallowing each other.</span><span class="tag blue">Simple</span></div>
+          <div class="filter-row"><b>Queue</b><span>Per-project pending map, newest per project wins, notifications queue-jump. Concurrent projects no longer swallow each other.</span><span class="tag blue">Simple</span></div>
           <div class="filter-row"><b>Prefix</b><span>When more than one project has spoken inside <span class="num">10</span> min, replies get a rotating spoken prefix: In X / From X / Update from X. Solo work stays unprefixed.</span><span class="tag">Live</span></div>
         </div>
       </section>
@@ -394,7 +412,7 @@
             </ul>
           </article>
           <article class="phase">
-            <header><h3>5. Refine</h3><span class="tag yellow">Next</span></header>
+            <header><h3>5. Refine</h3><span class="tag">Done</span></header>
             <ul>
               <li>Condense threshold to <span class="num">400</span></li>
               <li>Token-level markdown strip</li>
@@ -405,15 +423,35 @@
             </ul>
           </article>
           <article class="phase">
-            <header><h3>6. Controller</h3><span class="tag yellow">Queued</span></header>
+            <header><h3>6. Controller</h3><span class="tag">Done</span></header>
             <ul>
               <li><code>controller.html</code> served at <code>GET /</code></li>
               <li>Mixing Desk: threshold over live histogram</li>
               <li>Strip Inspector: raw vs cleaned diff</li>
-              <li>Voice Lab: catalog voices, per-agent, clone zone dormant</li>
+              <li>Voice Lab: catalog voices, per-agent</li>
               <li><code>config.json</code>, hot-applied</li>
               <li>Night Shift, tasks <span class="num">12-23</span>: smoke.sh, error journal, personality, quiet hours, ledger, notify parity + priority, config armor, transcript fallback, voicectl, temperature, docs true-up</li>
               <li>Full spec in section <span class="num">12</span></li>
+            </ul>
+          </article>
+          <article class="phase">
+            <header><h3>7. Controller v2</h3><span class="tag">Done</span></header>
+            <ul>
+              <li>Scrub-to-tune numbers replace sliders</li>
+              <li>SSE live layer + now-speaking strip</li>
+              <li>The Stage: real waveform + playhead</li>
+              <li>Replay ring: click a ledger blip to re-hear</li>
+              <li>Voice cloning: drop-a-wav or record in browser</li>
+              <li>Three-stage inspector, paintable quiet hours</li>
+            </ul>
+          </article>
+          <article class="phase">
+            <header><h3>8. Menu bar</h3><span class="tag yellow">Queued</span></header>
+            <ul>
+              <li><code>rumps</code> status-bar companion</li>
+              <li>Icon color = health, mute toggle, shut up</li>
+              <li>launchd plist for launch-at-login</li>
+              <li>A face on the daemon, not new behavior</li>
             </ul>
           </article>
         </div>
@@ -474,7 +512,9 @@ command = "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/pyth
               <tr><td>Condense failure</td><td>Audible failure line, superseded: first sentence + note (Phase 5)</td><td>Audible beat silent, but losing the content entirely was worse than a degraded summary.</td></tr>
               <tr><td>Project prefix</td><td>Rotating In X / From X / Update from X when <span class="num">2+</span> projects inside <span class="num">10</span> min</td><td>The ear needs a namespace when two agents talk; rotation keeps it from sounding robotic.</td></tr>
               <tr><td>Config UI</td><td><code>controller.html</code>, Phase 6 (2026-07-06)</td><td>The taste knobs turned out to be the product. Amends the 2026-07-05 "no config UI" invariant deliberately: the controller tunes, the daemon decides.</td></tr>
-              <tr><td>Voice</td><td>Catalog voices + per-agent assignment first; WAV cloning dormant</td><td>Cloning needs the gated HF weights (manual terms + login, Arshad's job). Ship the 22-voice catalog without blocking on it.</td></tr>
+              <tr><td>Voice</td><td>Catalog voices + per-agent assignment; cloning plumbing built, gated</td><td>The <span class="num">26</span>-voice catalog ships now. Cloning (drop-a-wav / record-in-browser) works end to end but needs the gated HF weights, so it degrades to an actionable "run hf auth login" message until Arshad does the one-time dance.</td></tr>
+              <tr><td>Playback engine</td><td>ffplay atempo, play on synthesis-complete (2026-07-06)</td><td>ffplay <code>atempo</code> changes speed without pitch-shifting (afplay <code>-r</code> shifts). True mid-synthesis PCM streaming was cut: ffplay's pipe exits early once buffered and truncates audio, and the latency win was marginal because condensing keeps replies short.</td></tr>
+              <tr><td>Live UI</td><td>SSE stream, not polling (controller v2)</td><td>One stdlib <code>text/event-stream</code> faucet pushes speak / now / wave events; the browser's <code>EventSource</code> auto-reconnects. Replaced the <span class="num">5s</span> poll so blips and the waveform land instantly.</td></tr>
             </tbody>
           </table>
         </div>
@@ -558,7 +598,7 @@ command = "/Users/arshad/Desktop/personal/code/let-there-be-voice/.venv/bin/pyth
             <tbody>
               <tr><td>Mixing Desk</td><td>The condense threshold as a draggable line over a live histogram of <code>spoken_chars</code> from <code>.voice.log</code>, with a "would have condensed: N%" readout. Below it: idle exit, prefix window, DeepSeek timeout, afplay rate and volume sliders.</td><td>Turns the highest-impact knob from a magic number into something aimed by eye, against real data.</td></tr>
               <tr><td>Strip Inspector</td><td>Last reply raw beside what survived cleanup, deletions highlighted. Fed by the daemon keeping the last raw + cleaned pair in memory.</td><td>The cleaner silently eats sentences today. This is the permanent tuning surface for <code>strip_markdown</code>.</td></tr>
-              <tr><td>Voice Lab</td><td>Dropdown of the <span class="num">22</span> Pocket catalog voices with an audition button, per-agent voice assignment (claude / codex / notification), drop-a-wav clone zone rendered but dormant until the gated HF weights are set up manually.</td><td>The moment plumbing becomes character: the ear knows who is talking without the prefix.</td></tr>
+              <tr><td>Voice Lab</td><td>Dropdown of the <span class="num">26</span> Pocket catalog voices with an audition button, per-agent voice assignment (claude / codex / notification), drop-a-wav / record-in-browser clone zone (gated on the HF weights).</td><td>The moment plumbing becomes character: the ear knows who is talking without the prefix.</td></tr>
             </tbody>
           </table>
         </div>
@@ -778,7 +818,7 @@ Phase 6 does. Run smoke.sh before every commit once it exists.</pre>
         Mantra: the build was verify the payload, bench the voice, two small files, two config pastes. The refine is one knob, one regex, one dict, and hygiene. Everything else is ornament.
       </div>
 
-      <p class="footer">let-there-be-voice · build packet v4 · 2026-07-06 · amended after the first week of real use · single self-contained file, no external assets</p>
+      <p class="footer">let-there-be-voice · build packet v5 · 2026-07-06 · phases 0-7 shipped, menu bar queued · single self-contained file, no external assets</p>
     </main>
   </div>
 

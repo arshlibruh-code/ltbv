@@ -396,9 +396,11 @@
         <a href="#interrupt">Interrupt <small>06</small></a>
         <a href="#projects">Two Projects <small>07</small></a>
         <a href="#long">Long Answers <small>08</small></a>
-        <a href="#kill">Kill Switch <small>09</small></a>
-        <a href="#shutdown">Shutdown <small>10</small></a>
-        <a href="#test">How To Test <small>11</small></a>
+        <a href="#controller">Controller <small>09</small></a>
+        <a href="#voices">Voices <small>10</small></a>
+        <a href="#kill">Kill Switch <small>11</small></a>
+        <a href="#shutdown">Shutdown <small>12</small></a>
+        <a href="#test">How To Test <small>13</small></a>
       </nav>
     </aside>
 
@@ -535,9 +537,42 @@
         </div>
       </section>
 
-      <section id="kill">
+      <section id="controller">
         <div class="section-head">
           <span class="idx">09</span>
+          <h2>Controller</h2>
+          <p>The dashboard, if you want to look under the hood.</p>
+        </div>
+        <div class="story">
+          <div class="timeline">
+            <div class="step"><b>Open the page</b><span>The daemon serves a control panel in your browser. It updates live as the voice speaks, no refreshing.</span></div>
+            <div class="step"><b>The stage</b><span>When a reply is spoken, you see its real waveform draw itself with a playhead sweeping along, and the text scrolling by.</span></div>
+            <div class="step"><b>The mixing desk</b><span>Drag a line across a chart of your past replies to set how long an answer can be before it gets summarized. You aim it by eye against real data.</span></div>
+            <div class="step"><b>The ledger</b><span>Every reply is a dot on a timeline, one lane per project. Click any dot to hear it again.</span></div>
+          </div>
+          <div class="state">
+            <h3>Why it exists</h3>
+            <p>The taste knobs turned out to be the interesting part. The controller tunes them, but it never decides anything: it is a remote, and the daemon stays the brain.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="voices">
+        <div class="section-head">
+          <span class="idx">10</span>
+          <h2>Voices</h2>
+          <p>Who does the talking.</p>
+        </div>
+        <div class="grid cols-3">
+          <div class="card pad metric"><b>A catalog of voices</b><span>Speech is generated fresh every time, never a stored recording. Each voice is a short reference sample the model imitates, so switching is instant and costs nothing.</span></div>
+          <div class="card pad metric"><b>One per agent</b><span>Claude, Codex, and notifications each get their own voice, so your ear knows who is talking before you read a word.</span></div>
+          <div class="card pad metric"><b>Your own voice</b><span>Drop in an audio clip or record yourself, and the system can speak in that voice. This waits on a one-time setup with the model's makers before it wakes up.</span></div>
+        </div>
+      </section>
+
+      <section id="kill">
+        <div class="section-head">
+          <span class="idx">11</span>
           <h2>Kill Switch</h2>
           <p>Silence on demand.</p>
         </div>
@@ -549,7 +584,7 @@
 
       <section id="shutdown">
         <div class="section-head">
-          <span class="idx">10</span>
+          <span class="idx">12</span>
           <h2>Shutdown</h2>
           <p>What happens when you close the day.</p>
         </div>
@@ -567,7 +602,7 @@
 
       <section id="test">
         <div class="section-head">
-          <span class="idx">11</span>
+          <span class="idx">13</span>
           <h2>How To Test</h2>
           <p>Simple confidence checks.</p>
         </div>
