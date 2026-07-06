@@ -36,6 +36,7 @@ CONFIG_PATH = ROOT / "config.json"
 CONTROLLER_PATH = ROOT / "controller.html"
 RING_DIR = ROOT / ".clips"
 VOICES_DIR = ROOT / "voices"
+KILL_PATH = ROOT / ".voice-disabled"
 AUDITION_TEXT = "This is {voice}, speaking for your coding agents."
 FFPLAY = shutil.which("ffplay")
 FFMPEG = shutil.which("ffmpeg")
@@ -219,6 +220,10 @@ CONFIG_SPEC = {
     "rate": {"default": 1.0, "kind": "float", "min": 0.5, "max": 3.0},
     "volume": {"default": 1.0, "kind": "float", "min": 0.0, "max": 1.0},
     "temperature": {"default": 0.7, "kind": "float", "min": 0.1, "max": 1.5},
+    "ducking_enabled": {"default": False, "kind": "bool"},
+    "duck_target_volume": {"default": 25, "kind": "int", "min": 0, "max": 100},
+    "duck_fade_ms": {"default": 400, "kind": "int", "min": 0, "max": 3000},
+    "duck_restore_delay_ms": {"default": 150, "kind": "int", "min": 0, "max": 3000},
     "quiet_hours": {"default": None, "kind": "quiet"},
     "voices": {
         "default": {"claude": "alba", "codex": "michael", "notification": "eve"},
@@ -262,6 +267,8 @@ prefix_counter = 0
 clip_ring = OrderedDict()
 
 config = {key: spec["default"] for key, spec in CONFIG_SPEC.items()}
+duck_state = {"did_duck": False, "saved_volume": None}
+duck_lock = threading.Lock()
 
 def active_engine_name() -> str:
     return config.get("engine", "pocket")
@@ -699,6 +706,89 @@ def player_proc(path: Path):
     return subprocess.Popen(args, start_new_session=True)
 
 
+def spotify_script(script: str) -> str | None:
+    try:
+        out = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if out.returncode != 0:
+            append_log("duck_error", detail=(out.stderr or out.stdout)[-300:])
+            return None
+        return out.stdout.strip()
+    except Exception as exc:
+        append_log("duck_error", detail=str(exc)[-300:])
+        return None
+
+
+def spotify_running() -> bool:
+    return spotify_script('application "Spotify" is running') == "true"
+
+
+def spotify_volume() -> int | None:
+    out = spotify_script('tell application "Spotify" to sound volume')
+    try:
+        return max(0, min(100, int(out))) if out is not None else None
+    except ValueError:
+        append_log("duck_error", detail=f"bad spotify volume: {out}")
+        return None
+
+
+def set_spotify_volume(volume: int) -> None:
+    volume = max(0, min(100, int(volume)))
+    spotify_script(f'tell application "Spotify" to set sound volume to {volume}')
+
+
+def fade_spotify_volume(start: int, end: int, fade_ms: int) -> None:
+    steps = max(1, min(8, int(fade_ms / 80) if fade_ms else 1))
+    delay = max(0, fade_ms / steps / 1000) if fade_ms else 0
+    for i in range(1, steps + 1):
+        volume = round(start + (end - start) * (i / steps))
+        set_spotify_volume(volume)
+        if delay and i < steps:
+            time.sleep(delay)
+
+
+def duck_on() -> None:
+    if not config.get("ducking_enabled"):
+        return
+    with duck_lock:
+        duck_state["did_duck"] = False
+        duck_state["saved_volume"] = None
+        if not spotify_running():
+            return
+        current = spotify_volume()
+        if current is None:
+            return
+        target = int(config["duck_target_volume"])
+        duck_state["saved_volume"] = current
+        duck_state["did_duck"] = True
+    fade_spotify_volume(current, target, int(config["duck_fade_ms"]))
+    append_log("duck_on", app="Spotify", from_volume=current, to_volume=target)
+
+
+def duck_off() -> None:
+    with duck_lock:
+        did_duck = bool(duck_state["did_duck"])
+        saved = duck_state["saved_volume"]
+        duck_state["did_duck"] = False
+        duck_state["saved_volume"] = None
+    if not did_duck or saved is None:
+        return
+    delay = int(config["duck_restore_delay_ms"]) / 1000
+    if delay:
+        time.sleep(delay)
+    if not spotify_running():
+        return
+    current = spotify_volume()
+    if current is None:
+        return
+    fade_spotify_volume(current, int(saved), int(config["duck_fade_ms"]))
+    append_log("duck_off", app="Spotify", from_volume=current, to_volume=int(saved))
+
+
 def ring_put(clip_id: str, path: Path) -> None:
     clip_ring[clip_id] = path
     while len(clip_ring) > RING_SIZE:
@@ -774,14 +864,28 @@ def speak(
     with state_lock:
         if is_stale(key, gen):
             return None
-        proc = player_proc(clip_path)
-        active_player = proc
-        active_cwd = cwd
-        last_spoken_ts = time.time()
-        now_speaking = {
-            "text": text[:240], "voice": voice, "kind": kind, "engine": engine.name,
-            "project": project_name(cwd), "ts": last_spoken_ts,
-        }
+    duck_on()
+    stale_after_duck = False
+    try:
+        with state_lock:
+            if is_stale(key, gen):
+                stale_after_duck = True
+            else:
+                proc = player_proc(clip_path)
+                active_player = proc
+                active_cwd = cwd
+                last_spoken_ts = time.time()
+                now_speaking = {
+                    "text": text[:240], "voice": voice, "kind": kind, "engine": engine.name,
+                    "project": project_name(cwd), "ts": last_spoken_ts,
+                }
+    except Exception:
+        log_error("player")
+        _finish(None)
+        return None
+    if stale_after_duck:
+        _finish(None)
+        return None
     publish({"event": "now", "on": True, **now_speaking})
     publish({
         "event": "wave", "peaks": downsample_peaks(peaks),
@@ -802,6 +906,7 @@ def _finish(proc) -> None:
         if proc:
             proc.wait()
     finally:
+        duck_off()
         with state_lock:
             if active_player is proc:
                 active_player = None
@@ -1050,6 +1155,17 @@ def log_tail(limit: int) -> list:
     return entries
 
 
+def muted() -> bool:
+    return KILL_PATH.exists()
+
+
+def set_muted(value: bool) -> None:
+    if value:
+        KILL_PATH.touch()
+    else:
+        KILL_PATH.unlink(missing_ok=True)
+
+
 def engine_status(engine: TTSEngine) -> dict:
     return {
         "name": engine.name,
@@ -1140,6 +1256,7 @@ class Handler(BaseHTTPRequestHandler):
                         "last_spoken_ts": last_spoken_ts,
                         "now_speaking": now_speaking,
                         "git_rev": GIT_REV,
+                        "muted": muted(),
                     },
                 )
                 return
@@ -1223,6 +1340,13 @@ class Handler(BaseHTTPRequestHandler):
                 data = read_json(self)
                 gen = stop_speech(data.get("cwd"))
                 json_response(self, 202, {"ok": True, "generation": gen})
+                return
+            if self.path == "/mute":
+                data = read_json(self)
+                value = bool(data.get("muted"))
+                set_muted(value)
+                publish({"event": "mute", "muted": muted()})
+                json_response(self, 200, {"ok": True, "muted": muted()})
                 return
             if self.path == "/speak":
                 data = read_json(self)
