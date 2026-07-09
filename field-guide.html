@@ -484,6 +484,7 @@
           <div class="card pad metric"><b>After a quiet stretch</b><span>The daemon exits on its own after being idle. That keeps memory use low while you are not actively talking to it.</span></div>
           <div class="card pad metric"><b>Next turn</b><span>The next completed response wakes the daemon again. You do not manually restart anything.</span></div>
           <div class="card pad metric"><b>Why this is okay</b><span>This is a personal utility, not a service. A short wake-up delay is better than keeping a model resident all day.</span></div>
+          <div class="card pad metric"><b>Forcing it awake</b><span>A restart button in the controller respawns the daemon on demand, useful right after editing the daemon itself. It is separate from sleep: it is a deliberate kick, not the idle exit.</span></div>
         </div>
       </section>
 
@@ -533,8 +534,8 @@
         </div>
         <div class="grid cols-3">
           <div class="card pad metric"><b>Short replies</b><span>These can be spoken almost directly, so the answer stays crisp and human.</span></div>
-          <div class="card pad metric"><b>Long replies</b><span>These get condensed into a two or three sentence spoken summary, so the speaker does not ramble through dense prose.</span></div>
-          <div class="card pad metric"><b>Tables</b><span>A reply with a table is never read row by row. The full reply goes to the configured summarizer first, and the voice speaks the short table summary. If that fails, it simply tells you to look.</span></div>
+          <div class="card pad metric"><b>Long replies</b><span>These get condensed into a short spoken summary, so the speaker does not ramble through dense prose. A local model can handle this entirely on your machine, or a network model can, your call.</span></div>
+          <div class="card pad metric"><b>Tables</b><span>A reply with a table is never read row by row. The full reply goes to the condenser first, and the voice speaks the short table summary. If that fails, it simply tells you to look.</span></div>
         </div>
       </section>
 
@@ -624,7 +625,7 @@
         <div class="note">
           The story is simple: agents finish, the voice speaks, naming the project when two are talking, new input stops it, and a fresh day starts the same sequence again.
         </div>
-        <p class="footer"><span>software for one</span><span>let-there-be-voice · field guide · 2026-07-06</span><span>local first</span></p>
+        <p class="footer"><span>software for one</span><span>let-there-be-voice · field guide · 2026-07-10</span><span>local first</span></p>
       </section>
     </main>
   </div>
