@@ -62,6 +62,7 @@
     .btn.danger.done { border-color: var(--green); color: var(--green); }
     .btn.toggle.on { border-color: var(--yellow); color: var(--yellow); }
     .btn:disabled { opacity: 0.35; cursor: default; }
+    .btn.wide { width: 100%; padding: 10px; font-size: 11px; letter-spacing: 0.08em; }
     #mute { min-width: 116px; }
     #shutup { min-width: 74px; }
     @media (max-width: 820px) {
@@ -233,6 +234,7 @@
     .hint { color: var(--faint); font-size: 10px; }
     kbd { font-family: var(--mono); font-size: 9px; border: 1px solid var(--line); padding: 0 4px; color: var(--muted); }
     .engine-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 10px; }
+    #condense-grid { grid-template-columns: repeat(3, 1fr); }
     @media (max-width: 620px) { .engine-grid { grid-template-columns: 1fr; } }
     .engine-card { border: 1px solid var(--line-soft); background: var(--panel-2); padding: 8px; display: grid; gap: 6px; }
     .engine-card.active { border-color: var(--blue); }
@@ -398,10 +400,9 @@
           <header><h2>Personality</h2><span class="saved" id="saved-prompt">saved</span></header>
           <div class="body">
             <textarea id="prompt" spellcheck="false"></textarea>
+            <div class="hint" style="margin-top:6px">autosaves as you type</div>
             <div class="row-actions">
-              <button class="btn" id="save-prompt">save prompt</button>
-              <button class="btn" id="recondense">re-condense last reply</button>
-              <span class="hint">changes how long replies get summarized before speech</span>
+              <button class="btn wide" id="recondense">hear the last reply condensed with this prompt</button>
             </div>
             <div class="pane" id="recondense-out"></div>
             <div class="err-line" id="err-prompt"></div>
@@ -512,8 +513,8 @@
 
     // ---------- condense provider ----------
     const CONDENSE_PROVIDERS = [
-      { name: "deepseek", detail: () => cfg.condense_model || "deepseek-v4-flash" },
       { name: "ollama", detail: () => cfg.condense_ollama_model || "qwen3.5:4b" },
+      { name: "deepseek", detail: () => cfg.condense_model || "deepseek-v4-flash" },
       { name: "none", detail: () => "skip condensing" },
     ];
     function renderCondense() {
@@ -1065,7 +1066,9 @@
     }
 
     // ---------- personality ----------
-    $("save-prompt").onclick = () => pushConfig({ condense_prompt: $("prompt").value }, "saved-prompt", "err-prompt");
+    $("prompt").addEventListener("input", () => {
+      pushConfig({ condense_prompt: $("prompt").value }, "saved-prompt", "err-prompt");
+    });
     $("duck-toggle").onclick = () => {
       cfg.ducking_enabled = !cfg.ducking_enabled;
       renderDucking();
