@@ -229,7 +229,6 @@
     .row-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
     .style-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
     .style-row span { color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
-    .style-row .btn.on { border-color: var(--green); color: var(--green); }
     #recondense-out { margin-top: 8px; display: none; }
     .hint { color: var(--faint); font-size: 10px; }
     kbd { font-family: var(--mono); font-size: 9px; border: 1px solid var(--line); padding: 0 4px; color: var(--muted); }
@@ -263,6 +262,7 @@
         <span class="pill">spoke <span id="h-spoke">never</span></span>
       </div>
       <div class="top-actions">
+        <button class="btn" id="restart" title="respawn the daemon process, picks up code/config changes">restart</button>
         <button class="btn toggle" id="mute" title="spacebar">shut up <kbd>space</kbd></button>
         <button class="btn danger" id="shutup" title="stop current speech">chill</button>
       </div>
@@ -315,40 +315,6 @@
         </section>
 
         <section>
-          <header><h2>Strip Inspector</h2><span>last reply through the pipeline</span></header>
-          <div class="body">
-            <div class="stages">
-              <div><div class="pane-title"><span>raw</span><span id="raw-count"></span></div><div class="pane" id="raw-pane">no reply seen yet by this daemon</div></div>
-              <div><div class="pane-title"><span>cleaned</span><span id="clean-count"></span></div><div class="pane" id="clean-pane">…</div></div>
-            </div>
-            <div class="spoken-row">
-              <div class="pane-title"><span>spoken</span><span class="badges" id="stage-badges"></span></div>
-              <div class="pane" id="spoken-pane">…</div>
-            </div>
-          </div>
-        </section>
-
-      </div>
-      <div class="col">
-
-        <section>
-          <header><h2>TTS Shootout</h2><span id="bench-state">Pocket stays default</span></header>
-          <div class="body">
-            <div class="engine-grid" id="engine-grid"></div>
-            <div class="bench-row">
-              <input id="bench-text" value="Codex finished the task and is ready for your next instruction.">
-              <button class="btn" id="bench-run">compare</button>
-            </div>
-            <table>
-              <thead><tr><th>engine</th><th>voice</th><th>rtf</th><th>ttfa</th><th>synth</th><th>dur</th><th></th><th></th></tr></thead>
-              <tbody id="bench-body"><tr><td colspan="8">no bench run yet</td></tr></tbody>
-            </table>
-            <div class="blind" id="blind"></div>
-            <div class="pane" id="cleanup"></div>
-          </div>
-        </section>
-
-        <section>
           <header><h2>Voice Lab</h2><span>generated live from one reference sample each</span></header>
           <div class="body">
             <div class="assigns">
@@ -394,16 +360,44 @@
           </div>
         </section>
 
+      </div>
+      <div class="col">
+
+        <section>
+          <header><h2>TTS Shootout</h2><span id="bench-state">Pocket stays default</span></header>
+          <div class="body">
+            <div class="engine-grid" id="engine-grid"></div>
+            <div class="bench-row">
+              <input id="bench-text" value="Codex finished the task and is ready for your next instruction.">
+              <button class="btn" id="bench-run">compare</button>
+            </div>
+            <table>
+              <thead><tr><th>engine</th><th>voice</th><th>rtf</th><th>ttfa</th><th>synth</th><th>dur</th><th></th><th></th></tr></thead>
+              <tbody id="bench-body"><tr><td colspan="8">no bench run yet</td></tr></tbody>
+            </table>
+            <div class="blind" id="blind"></div>
+            <div class="pane" id="cleanup"></div>
+          </div>
+        </section>
+
+        <section>
+          <header><h2>Strip Inspector</h2><span>last reply through the pipeline</span></header>
+          <div class="body">
+            <div class="stages">
+              <div><div class="pane-title"><span>raw</span><span id="raw-count"></span></div><div class="pane" id="raw-pane">no reply seen yet by this daemon</div></div>
+              <div><div class="pane-title"><span>cleaned</span><span id="clean-count"></span></div><div class="pane" id="clean-pane">…</div></div>
+            </div>
+            <div class="spoken-row">
+              <div class="pane-title"><span>spoken</span><span class="badges" id="stage-badges"></span></div>
+              <div class="pane" id="spoken-pane">…</div>
+            </div>
+          </div>
+        </section>
+
         <section>
           <header><h2>Personality</h2><span class="saved" id="saved-prompt">saved</span></header>
           <div class="body">
             <textarea id="prompt" spellcheck="false"></textarea>
-            <div class="style-row" id="speech-style">
-              <span>summary style</span>
-              <button class="btn" data-style="clean">clean</button>
-              <button class="btn" data-style="natural">natural</button>
-              <button class="btn" data-style="radio">radio</button>
-            </div>
             <div class="row-actions">
               <button class="btn" id="save-prompt">save prompt</button>
               <button class="btn" id="recondense">re-condense last reply</button>
@@ -411,6 +405,8 @@
             </div>
             <div class="pane" id="recondense-out"></div>
             <div class="err-line" id="err-prompt"></div>
+            <div class="style-row" style="margin-top:10px"><span>condense provider</span></div>
+            <div class="engine-grid" id="condense-grid"></div>
           </div>
         </section>
 
@@ -451,7 +447,7 @@
           if (errId) $(errId).textContent = "";
           if (savedId) flash(savedId);
         }
-        renderScrubs(); renderQuiet(); renderSpeechStyle(); drawHisto();
+        renderScrubs(); renderQuiet(); drawHisto();
       }, 300);
     }
 
@@ -508,6 +504,34 @@
             await initVoices();
             renderScrubs(); renderQuiet(); drawHisto();
           }
+        };
+        card.appendChild(b);
+        grid.appendChild(card);
+      }
+    }
+
+    // ---------- condense provider ----------
+    const CONDENSE_PROVIDERS = [
+      { name: "deepseek", detail: () => cfg.condense_model || "deepseek-v4-flash" },
+      { name: "ollama", detail: () => cfg.condense_ollama_model || "qwen3.5:4b" },
+      { name: "none", detail: () => "skip condensing" },
+    ];
+    function renderCondense() {
+      const grid = $("condense-grid");
+      grid.innerHTML = "";
+      const active = cfg.condense_provider || "deepseek";
+      for (const p of CONDENSE_PROVIDERS) {
+        const card = document.createElement("div");
+        card.className = "engine-card" + (p.name === active ? " active" : "");
+        card.innerHTML = `<b>${p.name}</b><span>${p.detail()}</span>`;
+        const b = document.createElement("button");
+        b.className = "btn";
+        b.textContent = p.name === active ? "active" : "set active";
+        b.disabled = p.name === active;
+        b.onclick = async () => {
+          const out = await api("/config", { condense_provider: p.name });
+          cfg = out.config;
+          renderCondense();
         };
         card.appendChild(b);
         grid.appendChild(card);
@@ -1041,19 +1065,6 @@
     }
 
     // ---------- personality ----------
-    function renderSpeechStyle() {
-      if (!cfg) return;
-      document.querySelectorAll("#speech-style button").forEach((b) => {
-        b.classList.toggle("on", b.dataset.style === cfg.speech_style);
-      });
-    }
-    document.querySelectorAll("#speech-style button").forEach((b) => {
-      b.onclick = () => {
-        cfg.speech_style = b.dataset.style;
-        renderSpeechStyle();
-        pushConfig({ speech_style: cfg.speech_style }, "saved-prompt", "err-prompt");
-      };
-    });
     $("save-prompt").onclick = () => pushConfig({ condense_prompt: $("prompt").value }, "saved-prompt", "err-prompt");
     $("duck-toggle").onclick = () => {
       cfg.ducking_enabled = !cfg.ducking_enabled;
@@ -1094,9 +1105,22 @@
       const out = await api("/mute", { muted: !isMuted });
       if (out.ok) setMuteState(!!out.muted);
     };
+    const restartDaemon = async () => {
+      const btn = $("restart");
+      btn.disabled = true;
+      btn.textContent = "restarting…";
+      try { await api("/restart", {}); } catch {}
+      const poll = setInterval(async () => {
+        try {
+          const res = await fetch("/health");
+          if (res.ok) { clearInterval(poll); location.reload(); }
+        } catch {}
+      }, 400);
+    };
     $("mute").onclick = toggleMute;
     $("shutup").onclick = chill;
     $("now-stop").onclick = chill;
+    $("restart").onclick = restartDaemon;
     addEventListener("keydown", (e) => {
       const t = e.target.tagName;
       if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT" || t === "BUTTON") return;
@@ -1117,7 +1141,7 @@
         if (ev.event === "config") {
           api("/config").then((c) => {
             cfg = c.config;
-            renderScrubs(); renderQuiet(); renderSpeechStyle(); drawHisto();
+            renderScrubs(); renderQuiet(); renderCondense(); drawHisto();
             if (document.activeElement !== $("prompt")) $("prompt").value = cfg.condense_prompt;
           });
           initEngines().catch(() => {});
@@ -1136,7 +1160,7 @@
     (async () => {
       const c = await api("/config");
       cfg = c.config;
-      buildScrubs(); renderScrubs(); renderQuiet(); renderSpeechStyle();
+      buildScrubs(); renderScrubs(); renderQuiet(); renderCondense();
       $("prompt").value = cfg.condense_prompt;
       await initEngines();
       await initVoices();
