@@ -286,7 +286,7 @@ CONFIG_SPEC = {
     "max_direct_chars": {"default": 400, "kind": "int", "min": 50, "max": 5000},
     "idle_exit_s": {"default": 600, "kind": "int", "min": 60, "max": 86400},
     "project_window_s": {"default": 600, "kind": "int", "min": 30, "max": 7200},
-    "condense_provider": {"default": "deepseek", "kind": "condense_provider"},
+    "condense_provider": {"default": "ollama", "kind": "condense_provider"},
     "condense_model": {"default": "deepseek-v4-flash", "kind": "str"},
     "condense_ollama_model": {"default": "qwen3.5:4b", "kind": "str"},
     "condense_timeout_s": {"default": 30, "kind": "int", "min": 2, "max": 60},
