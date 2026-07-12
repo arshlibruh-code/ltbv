@@ -82,6 +82,25 @@ print("1" if ok else "0")
 EOF
 }
 
+earcon_only_since() { # earcon_only_since <since-epoch>
+  "$PY" - "$1" <<'EOF'
+import json, sys
+since = float(sys.argv[1])
+ok = False
+try:
+    for line in open(".voice.log"):
+        try:
+            d = json.loads(line)
+        except Exception:
+            continue
+        if d.get("event") == "speak" and d.get("ts", 0) >= since and d.get("contract") == "earcon_only":
+            ok = True
+except FileNotFoundError:
+    pass
+print("1" if ok else "0")
+EOF
+}
+
 # restore kill switch state on exit
 HAD_KILL=0
 [ -f "$KILL" ] && HAD_KILL=1 && mv "$KILL" "$KILL.smoke"
@@ -96,6 +115,8 @@ trap cleanup EXIT
 
 cd "$ROOT"
 
+if "$PY" -m unittest -q test_voice_features.py test_daemon_contract.py >/dev/null 2>&1; then pass "speech contract evals"; else fail "speech contract evals"; fi
+
 # 1. daemon up (start if down)
 if ! curl -sf -m 2 "$BASE/health" >/dev/null 2>&1; then
   nohup "$PY" "$ROOT/daemon.py" >/dev/null 2>&1 &
@@ -105,6 +126,7 @@ if ! curl -sf -m 2 "$BASE/health" >/dev/null 2>&1; then
   done
 fi
 if curl -sf -m 2 "$BASE/health" | grep -q '"ok": true'; then pass "daemon health"; else fail "daemon health"; fi
+if curl -sf -m 3 "$BASE/doctor" | "$PY" -c 'import json,sys; d=json.load(sys.stdin); raise SystemExit(0 if len(d.get("checks", [])) >= 6 else 1)'; then pass "doctor endpoint"; else fail "doctor endpoint"; fi
 ORIG_VOLUME=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["config"]["volume"])')
 SMOKE_LINE=$("$PY" - <<'EOF'
 import random
@@ -140,6 +162,15 @@ if wait_for_event speak "$SINCE" 60; then pass "hook speaks"; else fail "hook sp
 FIRST_CLIP=$(latest_clip_since "$SINCE")
 curl -sf -m 2 -X POST "$BASE/config" -d '{"volume": 0}' >/dev/null
 
+SINCE=$("$PY" -c "import time; print(time.time())")
+curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"Done.","cwd":"/tmp/ltbv-earcon"}' >/dev/null
+EARCON=0
+for _ in $(seq 1 20); do
+  [ "$(earcon_only_since "$SINCE")" = "1" ] && EARCON=1 && break
+  sleep 1
+done
+if [ "$EARCON" = "1" ]; then pass "trivial success earcon"; else fail "trivial success earcon"; fi
+
 # 3. scoped stop: stop from unrelated project must be ignored
 SINCE=$("$PY" -c "import time; print(time.time())")
 curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"smoke scoped stop","cwd":"/tmp/ltbv-smoke"}' >/dev/null
@@ -160,6 +191,17 @@ for _ in $(seq 1 90); do
   sleep 1
 done
 if [ "$OK" = 1 ]; then pass "multi-project queue"; else fail "multi-project queue"; fi
+
+# 4b. parallel sessions in one repo must not overwrite each other
+SINCE=$("$PY" -c "import time; print(time.time())")
+curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"parallel turn one","cwd":"/tmp/ltbv-parallel","session_id":"one","turn_id":"1"}' >/dev/null
+curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"parallel turn two","cwd":"/tmp/ltbv-parallel","session_id":"two","turn_id":"2"}' >/dev/null
+OK=0
+for _ in $(seq 1 60); do
+  [ "$(log_count speak "$SINCE")" -ge 2 ] && OK=1 && break
+  sleep 1
+done
+if [ "$OK" = 1 ]; then pass "same-repo parallel turns"; else fail "same-repo parallel turns"; fi
 
 # 5. SHUT UP blocks the hook
 touch "$KILL"

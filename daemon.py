@@ -17,7 +17,6 @@ import tempfile
 import threading
 import time
 import traceback
-import urllib.error
 import urllib.parse
 import urllib.request
 import wave
@@ -31,16 +30,18 @@ from voice_features import (
     classify_intent,
     detect_build_signal,
     earcon_pcm,
+    enforce_spoken_contract,
     git_change_summary,
     git_snapshot,
     redact_sensitive,
+    request_intent,
+    transcript_tool_evidence,
     trim_to_words,
 )
 
 ROOT = Path(__file__).resolve().parent
 HOST = "127.0.0.1"
 PORT = 7333
-DEEPSEEK_SETTINGS = Path.home() / ".claude" / "settings.deepseek.json"
 TABLE_FALLBACK_TEXT = (
     "I made a table for this, but I won't read the whole thing out loud. "
     "Take a look and tell me what you think."
@@ -48,6 +49,7 @@ TABLE_FALLBACK_TEXT = (
 PREFIX_TEMPLATES = ("In {project}: ", "From {project}: ", "Update from {project}: ")
 LOG_PATH = ROOT / ".voice.log"
 CONFIG_PATH = ROOT / "config.json"
+TURN_STATE_PATH = ROOT / ".turns.json"
 CONTROLLER_PATH = ROOT / "controller.html"
 RING_DIR = ROOT / ".clips"
 VOICES_DIR = ROOT / "voices"
@@ -61,8 +63,9 @@ SAMPLE_RATE = 24000
 
 DEFAULT_CONDENSE_PROMPT = (
     "You are speaking for a coding agent after it has finished a turn. "
-    "The user hears this out loud, so sound like a calm coding partner, not a report. "
-    "Say what changed, what matters, or what the user should notice next. "
+    "The user hears this out loud, so speak the smallest truthful thing that lets them continue without looking. "
+    "Lead with the result, blocker, or exact decision required. Mention evidence and uncertainty when they matter. "
+    "Never discuss summarizing, prompts, the assistant, or the user. "
     "If the reply contains a table, summarize the table's meaning conversationally. "
 )
 
@@ -299,7 +302,6 @@ CONFIG_SPEC = {
     "idle_exit_s": {"default": 600, "kind": "int", "min": 60, "max": 86400},
     "project_window_s": {"default": 600, "kind": "int", "min": 30, "max": 7200},
     "condense_provider": {"default": "ollama", "kind": "condense_provider"},
-    "condense_model": {"default": "deepseek-v4-flash", "kind": "str"},
     "condense_ollama_model": {"default": "qwen3.5:4b", "kind": "str"},
     "condense_timeout_s": {"default": 30, "kind": "int", "min": 2, "max": 60},
     "rate": {"default": 1.0, "kind": "float", "min": 0.5, "max": 3.0},
@@ -344,6 +346,121 @@ def git_rev() -> str | None:
 
 GIT_REV = git_rev()
 
+
+def git_runtime_state() -> dict:
+    try:
+        branch = subprocess.run(
+            ["git", "-C", str(ROOT), "branch", "--show-current"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        ).stdout.strip()
+        dirty = bool(
+            subprocess.run(
+                ["git", "-C", str(ROOT), "status", "--porcelain"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            ).stdout.strip()
+        )
+        return {"rev": git_rev(), "branch": branch or "detached", "dirty": dirty}
+    except Exception:
+        return {"rev": GIT_REV, "branch": "unknown", "dirty": None}
+
+
+def hook_install_status() -> dict:
+    expected = str(ROOT / "hook.py")
+    events = ("Stop", "UserPromptSubmit", "Notification")
+    status = {"claude": {}, "codex": {}}
+    try:
+        data = json.loads((Path.home() / ".claude" / "settings.json").read_text())
+        hooks = data.get("hooks") or {}
+        for event in events:
+            status["claude"][event] = expected in json.dumps(hooks.get(event) or [])
+    except Exception:
+        status["claude"] = {event: False for event in events}
+    try:
+        text = (Path.home() / ".codex" / "config.toml").read_text()
+        has_command = expected in text
+        for event in events:
+            status["codex"][event] = has_command and f"[[hooks.{event}]]" in text
+    except Exception:
+        status["codex"] = {event: False for event in events}
+    return status
+
+
+def ollama_reachable() -> bool:
+    try:
+        urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=0.5).read(1)
+        return True
+    except Exception:
+        return False
+
+
+def doctor_snapshot() -> dict:
+    hooks = hook_install_status()
+    provider = config.get("condense_provider", "none")
+    ollama = ollama_reachable()
+    condense_ok = provider == "none" or (provider == "ollama" and ollama)
+    condense_detail = {
+        "none": "disabled · local",
+        "ollama": f"ollama · local · {'reachable' if ollama else 'not running'}",
+    }.get(provider, provider)
+    checks = [
+        {"name": "daemon", "ok": True, "detail": f"127.0.0.1:{PORT}", "required": True},
+        {
+            "name": "tts",
+            "ok": active_engine().installed(),
+            "detail": f"{active_engine_name()} · {'loaded' if active_engine().loaded() else 'cold'}",
+            "required": True,
+        },
+        {
+            "name": "claude hooks",
+            "ok": all(hooks["claude"].values()),
+            "detail": ", ".join(name for name, ok in hooks["claude"].items() if not ok) or "all events",
+            "required": True,
+        },
+        {
+            "name": "codex hooks",
+            "ok": all(hooks["codex"].values()),
+            "detail": ", ".join(name for name, ok in hooks["codex"].items() if not ok) or "all events",
+            "required": True,
+        },
+        {
+            "name": "condense",
+            "ok": condense_ok,
+            "detail": condense_detail,
+            "required": provider != "none",
+        },
+        {
+            "name": "speech switch",
+            "ok": not muted(),
+            "detail": "enabled" if not muted() else "shut up is on",
+            "required": False,
+        },
+        {
+            "name": "browser adapter",
+            "ok": (ROOT / "browser-extension" / "manifest.json").exists(),
+            "detail": "packaged, browser load is manual",
+            "required": False,
+        },
+        {
+            "name": "playback",
+            "ok": bool(FFPLAY or shutil.which("afplay")),
+            "detail": "ffplay" if FFPLAY else "afplay",
+            "required": True,
+        },
+    ]
+    required_ok = all(check["ok"] for check in checks if check["required"])
+    return {
+        "ok": required_ok,
+        "checks": checks,
+        "hooks": hooks,
+        "git": git_runtime_state(),
+        "provider": provider,
+        "locality": "local",
+    }
+
 state_lock = threading.Lock()
 pending = {}
 worker_running = False
@@ -364,9 +481,94 @@ now_speaking = None
 sse_subscribers = []
 sse_lock = threading.Lock()
 recent_projects = {}
-turn_snapshots = {}
+turn_records = {}
 prefix_counter = 0
 clip_ring = OrderedDict()
+
+
+def turn_key(cwd=None, session_id=None, turn_id=None) -> str:
+    return "|".join(str(value or "") for value in (session_id, turn_id, cwd))
+
+
+def job_key(cwd=None, kind="reply", session_id=None, turn_id=None) -> tuple:
+    if kind == "reply" and (session_id or turn_id):
+        return (cwd, kind, session_id, turn_id)
+    return (cwd, kind)
+
+
+def save_turn_records() -> None:
+    try:
+        cutoff = time.time() - 86400
+        records = [
+            {key: value for key, value in record.items() if key != "prompt"}
+            for record in turn_records.values()
+            if float(record.get("started_at") or 0) >= cutoff
+        ][-64:]
+        TURN_STATE_PATH.write_text(json.dumps(records, indent=2) + "\n")
+    except Exception:
+        append_log("turn_state_error", action="save")
+
+
+def load_turn_records() -> None:
+    try:
+        records = json.loads(TURN_STATE_PATH.read_text()) if TURN_STATE_PATH.exists() else []
+        cutoff = time.time() - 86400
+        for record in records:
+            if float(record.get("started_at") or 0) >= cutoff:
+                turn_records[record["key"]] = record
+    except Exception:
+        append_log("turn_state_error", action="load")
+
+
+def store_turn(data: dict) -> dict:
+    cwd = data.get("cwd")
+    prompt, _ = redact_sensitive(str(data.get("prompt") or ""), cwd)
+    key = turn_key(cwd, data.get("session_id"), data.get("turn_id"))
+    record = {
+        "key": key,
+        "cwd": cwd,
+        "session_id": data.get("session_id"),
+        "turn_id": data.get("turn_id"),
+        "transcript_path": data.get("transcript_path"),
+        "started_at": time.time(),
+        "request_intent": request_intent(prompt),
+        "git": None,
+        "git_state": "pending" if cwd else "unavailable",
+        "prompt": prompt,
+    }
+    with state_lock:
+        turn_records[key] = record
+        save_turn_records()
+    def capture() -> None:
+        snapshot = git_snapshot(cwd)
+        with state_lock:
+            current = turn_records.get(key)
+            if not current:
+                return
+            current["git"] = snapshot or None
+            current["git_state"] = "ready" if snapshot else "unavailable"
+            save_turn_records()
+
+    threading.Thread(target=capture, daemon=True).start()
+    return record
+
+
+def take_turn(job: dict) -> dict:
+    cwd = job.get("cwd")
+    exact = turn_key(cwd, job.get("session_id"), job.get("turn_id"))
+    with state_lock:
+        record = turn_records.pop(exact, None)
+        if not record:
+            candidates = [
+                item for item in turn_records.values()
+                if item.get("cwd") == cwd
+                and (not job.get("session_id") or item.get("session_id") == job.get("session_id"))
+            ]
+            if candidates:
+                record = max(candidates, key=lambda item: item.get("started_at", 0))
+                turn_records.pop(record["key"], None)
+        save_turn_records()
+    return record or {}
 
 config = {key: spec["default"] for key, spec in CONFIG_SPEC.items()}
 duck_state = {
@@ -494,7 +696,7 @@ def validate_field(key: str, value):
         return value
     if kind == "condense_provider":
         value = str(value).strip().lower()
-        if value not in {"deepseek", "ollama", "none"}:
+        if value not in {"ollama", "none"}:
             raise ValueError(key)
         return value
     raise ValueError(key)
@@ -512,8 +714,6 @@ def load_config() -> None:
         except Exception:
             append_log("config_error", field="_file")
             raw = {}
-    if "condense_timeout_s" not in raw and "deepseek_timeout_s" in raw:
-        raw["condense_timeout_s"] = raw["deepseek_timeout_s"]
     for key, value in raw.items():
         if key not in CONFIG_SPEC:
             continue
@@ -641,11 +841,6 @@ def first_sentence(text: str) -> str:
     return text[: config["max_direct_chars"]].strip()
 
 
-def read_deepseek_env() -> dict:
-    data = json.loads(DEEPSEEK_SETTINGS.read_text())
-    return data.get("env", {})
-
-
 def condense_via_ollama(text: str, instruction: str | None = None) -> str | None:
     system_prompt = config["condense_prompt"]
     if instruction:
@@ -691,85 +886,12 @@ def condense_via_ollama(text: str, instruction: str | None = None) -> str | None
 
 
 def condense(text: str, instruction: str | None = None) -> str | None:
-    provider = config.get("condense_provider", "deepseek")
+    provider = config.get("condense_provider", "ollama")
     if provider == "none":
         return None
     if provider == "ollama":
         return condense_via_ollama(text, instruction)
-    if provider != "deepseek":
-        append_log("condense_error", provider=provider, detail="unsupported provider")
-        return None
-    try:
-        env = read_deepseek_env()
-    except Exception as exc:
-        append_log(
-            "condense_error",
-            provider=provider,
-            detail=str(exc)[:300],
-            error=type(exc).__name__,
-        )
-        return None
-    token = env.get("ANTHROPIC_AUTH_TOKEN")
-    if not token:
-        append_log("condense_error", provider=provider, detail="missing token")
-        return None
-    system_prompt = config["condense_prompt"]
-    if instruction:
-        system_prompt = f"{system_prompt} {instruction}"
-    body = {
-        "model": config.get("condense_model") or "deepseek-v4-flash",
-        "max_tokens": 1000,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": text},
-        ],
-    }
-    payload = json.dumps(body).encode("utf-8")
-    for attempt in range(2):
-        req = urllib.request.Request(
-            "https://api.deepseek.com/anthropic/v1/messages",
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": token,
-                "anthropic-version": "2023-06-01",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(
-                req, timeout=config["condense_timeout_s"]
-            ) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-            content = data.get("content") or []
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    return strip_markdown(block.get("text", "")) or None
-            append_log(
-                "condense_error",
-                provider=provider,
-                detail="empty response",
-                attempt=attempt + 1,
-            )
-        except urllib.error.HTTPError as exc:
-            detail = exc.read(300).decode("utf-8", "replace")
-            append_log(
-                "condense_error",
-                provider=provider,
-                detail=detail,
-                status=exc.code,
-                attempt=attempt + 1,
-            )
-        except Exception as exc:
-            append_log(
-                "condense_error",
-                provider=provider,
-                detail=str(exc)[:300],
-                error=type(exc).__name__,
-                attempt=attempt + 1,
-            )
-        if attempt == 0:
-            time.sleep(0.4)
+    append_log("condense_error", provider=provider, detail="unsupported provider")
     return None
 
 
@@ -778,6 +900,8 @@ def prepare_speech(
     intent: str = "update",
     diff_info: dict | None = None,
     kind: str = "reply",
+    request_summary: str = "",
+    verification: dict | None = None,
 ) -> tuple[str, dict]:
     tableless, meta = strip_markdown_tables(raw or "")
     text = strip_markdown(tableless)
@@ -788,14 +912,30 @@ def prepare_speech(
     meta["intent"] = intent
     meta["word_budget"] = budget
     meta["diff_files"] = int(diff_info.get("count") or 0)
+    meta["git_verified"] = diff_info.get("verified")
+    meta["git_reason"] = diff_info.get("reason")
+    meta["git_branch_changed"] = bool(diff_info.get("branch_changed"))
+    meta["git_oversized"] = bool(diff_info.get("oversized"))
+    verification = verification or {}
+    meta["request_intent"] = request_summary
+    meta["verification"] = verification.get("verification", "unknown")
+    meta["verification_tests"] = verification.get("tests", [])
     instruction = (
         f"Use at most {budget} words. Lead with the blocker or required action. "
         "Do not mention implementation chatter."
     )
     source = raw
+    context = []
+    if request_summary:
+        context.append(f"Request intent: {request_summary}.")
+    if verification.get("verification") != "unknown":
+        tests = ", ".join(verification.get("tests") or ["checks"])
+        context.append(f"Actual tool evidence: {tests} {verification['verification']}.")
     if diff_summary:
-        source = f"Verified Git evidence: {diff_summary}\n\nAgent reply:\n{raw}"
+        context.append(f"Verified Git evidence: {diff_summary}")
         instruction += " Treat the verified Git evidence as factual and mention its material change."
+    if context:
+        source = "\n".join(context) + f"\n\nAgent reply:\n{raw}"
 
     def concise_fallback(value: str) -> str:
         generic = len(value.split()) <= 6 and re.search(
@@ -805,18 +945,29 @@ def prepare_speech(
             return trim_to_words(diff_summary, budget)
         return trim_to_words(value, budget)
 
+    def finish(value: str) -> tuple[str, dict]:
+        spoken, contract_meta = enforce_spoken_contract(
+            value,
+            source,
+            intent,
+            budget,
+            diff_summary,
+        )
+        meta.update(contract_meta)
+        return spoken, meta
+
     if meta["table_skipped"]:
         condensed = condense(source, instruction)
         if condensed is not None:
             meta["condense"] = "ok"
             meta["condense_source"] = "raw_table"
-            return trim_to_words(strip_markdown(condensed), budget), meta
+            return finish(strip_markdown(condensed))
         meta["condense"] = "failed"
         meta["condense_source"] = "raw_table"
         if text:
-            return concise_fallback(first_sentence(text)), meta
+            return finish(concise_fallback(first_sentence(text)))
         meta["table_fallback"] = True
-        return TABLE_FALLBACK_TEXT, meta
+        return finish(TABLE_FALLBACK_TEXT)
     if not text:
         return "", meta
     adaptive_overflow = config.get("adaptive_brevity_enabled") and len(text.split()) > budget
@@ -826,12 +977,12 @@ def prepare_speech(
         if condensed is None:
             meta["condense"] = "failed"
             meta["condense_source"] = "cleaned"
-            return concise_fallback(first_sentence(text)), meta
+            return finish(concise_fallback(first_sentence(text)))
         meta["condense"] = "ok"
         meta["condense_source"] = "cleaned"
-        return trim_to_words(strip_markdown(condensed), budget), meta
+        return finish(strip_markdown(condensed))
     meta["condense"] = "not_needed"
-    return concise_fallback(text), meta
+    return finish(concise_fallback(text))
 
 
 def transcript_last_assistant(path_str: str) -> str:
@@ -1143,17 +1294,18 @@ def speak(
         pcm_frames.append(cue_pcm)
         peaks.append(pcm_peak(cue_pcm))
         total_samples += len(cue_pcm) // 2
-    try:
-        for chunk in engine.synth(text, voice):
-            with state_lock:
-                if is_stale(key, gen):
-                    return None
-            peaks.append(pcm_peak(chunk))
-            total_samples += len(chunk) // 2
-            pcm_frames.append(chunk)
-    except Exception:
-        log_error("synthesize")
-        return None
+    if text:
+        try:
+            for chunk in engine.synth(text, voice):
+                with state_lock:
+                    if is_stale(key, gen):
+                        return None
+                peaks.append(pcm_peak(chunk))
+                total_samples += len(chunk) // 2
+                pcm_frames.append(chunk)
+        except Exception:
+            log_error("synthesize")
+            return None
 
     clip_id = str(int(time.time() * 1000))
     clip_path = RING_DIR / f"{clip_id}.wav"
@@ -1389,17 +1541,33 @@ def bulletin_content(job: dict) -> tuple[str, dict, str, str | None]:
         intents.append(intent)
         if signal:
             signals.append(signal)
-        with state_lock:
-            snapshot = turn_snapshots.pop(cwd, None) if cwd else None
+        turn = take_turn(source)
+        snapshot = turn.get("git")
         diff_info = {}
         if config.get("diff_narration_enabled") and snapshot:
             diff_info = git_change_summary(cwd, snapshot)
             diff_files += int(diff_info.get("count") or 0)
+        elif turn and config.get("diff_narration_enabled"):
+            diff_info = {"verified": False, "summary": "Git evidence unavailable for this turn.", "reason": turn.get("git_state", "unavailable")}
+        verification = transcript_tool_evidence(
+            source.get("transcript_path") or turn.get("transcript_path"),
+            float(turn.get("started_at") or 0),
+            source.get("turn_id") or turn.get("turn_id"),
+        )
+        if verification.get("verification") == "failed":
+            signals.append("tests_failed")
+        elif verification.get("verification") == "passed":
+            signals.append("tests_passed")
         cleaned = strip_markdown(raw)
         evidence = str(diff_info.get("summary") or "")
         section = f"Project {project}."
         if evidence:
             section += f" Verified Git evidence: {evidence}"
+        if turn.get("request_intent"):
+            section += f" Request intent: {turn['request_intent']}."
+        if verification.get("verification") != "unknown":
+            tests = ", ".join(verification.get("tests") or ["checks"])
+            section += f" Actual tool evidence: {tests} {verification['verification']}."
         section += f" Agent reply: {cleaned or raw}"
         sections.append(section)
         fallback = evidence or first_sentence(cleaned)
@@ -1417,8 +1585,13 @@ def bulletin_content(job: dict) -> tuple[str, dict, str, str | None]:
         f"Use at most {budget} words total. Give one short clause per project, name every project, "
         "and lead with any blocker or request for input."
     )
-    condensed = condense("\n\n".join(sections), instruction)
-    text = trim_to_words(strip_markdown(condensed), budget) if condensed else "Bulletin. " + ". ".join(fallback_parts)
+    source = "\n\n".join(sections)
+    condensed = condense(source, instruction)
+    fallback_text = "Bulletin. " + ". ".join(fallback_parts)
+    candidate = trim_to_words(strip_markdown(condensed), budget) if condensed else fallback_text
+    text, contract_meta = enforce_spoken_contract(candidate, source, intent, budget)
+    if contract_meta.get("contract") == "fallback":
+        text = trim_to_words(fallback_text, budget)
     for source in job.get("source_jobs") or []:
         text, count = apply_pronunciations(text, source.get("cwd"))
         pronunciation_count += count
@@ -1433,6 +1606,7 @@ def bulletin_content(job: dict) -> tuple[str, dict, str, str | None]:
         "build_signal": build_signal,
         "condense": "ok" if condensed else "failed",
         "condense_source": "radio_bulletin",
+        **contract_meta,
     }
     return text, meta, intent, build_signal
 
@@ -1443,7 +1617,7 @@ def process_job(job: dict) -> None:
     raw = job["raw"]
     cwd = job["cwd"]
     kind = job["kind"]
-    key = (cwd, kind)
+    key = job_key(cwd, kind, job.get("session_id"), job.get("turn_id"))
     if kind == "bulletin":
         text, meta, intent, build_signal = bulletin_content(job)
         cleaned = ""
@@ -1453,15 +1627,29 @@ def process_job(job: dict) -> None:
             raw, redacted_count = redact_sensitive(raw, cwd)
         intent = classify_intent(raw, kind)
         build_signal = detect_build_signal(raw)
-        with state_lock:
-            snapshot = turn_snapshots.pop(cwd, None) if cwd else None
+        turn = take_turn(job) if kind == "reply" else {}
+        snapshot = turn.get("git")
         diff_info = {}
         if kind == "reply" and config.get("diff_narration_enabled") and snapshot:
             diff_info = git_change_summary(cwd, snapshot)
+        elif kind == "reply" and config.get("diff_narration_enabled") and turn:
+            diff_info = {"verified": False, "summary": "Git evidence unavailable for this turn.", "reason": turn.get("git_state", "unavailable")}
         if job.get("prepared"):
             text, meta = raw, {}
         else:
-            text, meta = prepare_speech(raw, intent, diff_info, kind)
+            evidence = transcript_tool_evidence(
+                job.get("transcript_path") or turn.get("transcript_path"),
+                float(turn.get("started_at") or 0),
+                job.get("turn_id") or turn.get("turn_id"),
+            )
+            text, meta = prepare_speech(
+                raw,
+                intent,
+                diff_info,
+                kind,
+                turn.get("request_intent", ""),
+                evidence,
+            )
         meta["redacted"] = redacted_count
         meta["build_signal"] = build_signal
         cleaned = meta.pop("_cleaned", "")
@@ -1474,20 +1662,43 @@ def process_job(job: dict) -> None:
                 "condense": meta.get("condense"),
                 "table_skipped": meta.get("table_skipped"),
             }
-    if not text:
+    earcon_only = meta.get("contract") == "earcon_only"
+    if not text and not earcon_only:
         append_log("skip_empty", cwd=cwd, **meta)
         return
     if in_quiet_hours():
         append_log("quiet_skip", cwd=cwd, kind=kind)
         return
     prefix, prefixed = "", False
-    if kind == "reply":
+    if kind == "reply" and text:
         prefix, prefixed = prefix_for_project(project_name(cwd))
         if prefixed:
             text = prefix + text
-    if kind != "bulletin":
+    if kind != "bulletin" and text:
         text, pronunciation_count = apply_pronunciations(text, cwd)
         meta["pronunciations"] = pronunciation_count
+    if kind == "reply" and not job.get("prepared"):
+        with state_lock:
+            last_stages.update(
+                {
+                    "spoken": text,
+                    "intent": meta.get("intent"),
+                    "contract": meta.get("contract"),
+                    "contract_reasons": meta.get("contract_reasons") or [],
+                    "diff_files": meta.get("diff_files", 0),
+                    "git_verified": meta.get("git_verified"),
+                    "git_reason": meta.get("git_reason"),
+                    "git_branch_changed": meta.get("git_branch_changed", False),
+                    "git_oversized": meta.get("git_oversized", False),
+                    "redacted": meta.get("redacted", 0),
+                    "pronunciations": meta.get("pronunciations", 0),
+                    "build_signal": meta.get("build_signal"),
+                    "word_budget": meta.get("word_budget"),
+                    "request_intent": meta.get("request_intent"),
+                    "verification": meta.get("verification"),
+                    "verification_tests": meta.get("verification_tests") or [],
+                }
+            )
     with state_lock:
         stale = is_stale(key, gen)
         current_generation = generation_for(key)
@@ -1511,6 +1722,9 @@ def process_job(job: dict) -> None:
         build_enabled=bool(config.get("build_sonification_enabled")),
     )
     meta.update(cue_meta)
+    if not text and not cue:
+        append_log("skip_empty", cwd=cwd, **meta)
+        return
     clip_id = speak(
         text,
         gen,
@@ -1580,12 +1794,15 @@ def enqueue_speak(
     voice: str | None = None,
     engine: str | None = None,
     prepared: bool = False,
+    session_id: str | None = None,
+    turn_id: str | None = None,
+    transcript_path: str | None = None,
 ) -> int:
     global worker_running, generation
     with state_lock:
         generation += 1
         gen = generation
-        key = (cwd, kind)
+        key = job_key(cwd, kind, session_id, turn_id)
         generations[key] = gen
         pending[key] = {
             "gen": gen,
@@ -1596,6 +1813,9 @@ def enqueue_speak(
             "voice": voice,
             "engine": engine,
             "prepared": prepared,
+            "session_id": session_id,
+            "turn_id": turn_id,
+            "transcript_path": transcript_path,
         }
         if not worker_running:
             worker_running = True
@@ -1770,6 +1990,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
                 return
             if route == "/health":
+                git = git_runtime_state()
+                provider = config.get("condense_provider", "none")
                 json_response(
                     self,
                     200,
@@ -1781,10 +2003,17 @@ class Handler(BaseHTTPRequestHandler):
                         "last_spoken_ts": last_spoken_ts,
                         "last_spoken_clip": last_spoken_clip,
                         "now_speaking": now_speaking,
-                        "git_rev": GIT_REV,
+                        "git_rev": git.get("rev"),
+                        "git_branch": git.get("branch"),
+                        "git_dirty": git.get("dirty"),
+                        "condense_provider": provider,
+                        "condense_locality": "local",
                         "muted": muted(),
                     },
                 )
+                return
+            if route == "/doctor":
+                json_response(self, 200, doctor_snapshot())
                 return
             if route == "/browser/duck":
                 state = browser_duck_snapshot()
@@ -1885,14 +2114,11 @@ class Handler(BaseHTTPRequestHandler):
                 data = read_json(self)
                 cwd = data.get("cwd")
                 gen = stop_speech(cwd)
-                snapshot = git_snapshot(cwd)
-                if cwd and snapshot:
-                    with state_lock:
-                        turn_snapshots[cwd] = snapshot
+                record = store_turn(data)
                 json_response(
                     self,
                     202,
-                    {"ok": True, "generation": gen, "git": bool(snapshot)},
+                    {"ok": True, "generation": gen, "git": record.get("git_state"), "intent": record.get("request_intent")},
                 )
                 return
             if self.path == "/restart":
@@ -1934,7 +2160,14 @@ class Handler(BaseHTTPRequestHandler):
                     "notification" if data.get("event") == "Notification" else "reply"
                 )
                 gen = enqueue_speak(
-                    text, cwd, kind=kind, agent=data.get("agent"), engine=engine_name
+                    text,
+                    cwd,
+                    kind=kind,
+                    agent=data.get("agent"),
+                    engine=engine_name,
+                    session_id=data.get("session_id"),
+                    turn_id=data.get("turn_id"),
+                    transcript_path=data.get("transcript_path"),
                 )
                 json_response(self, 202, {"ok": True, "generation": gen})
                 return
@@ -2044,6 +2277,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> int:
     load_config()
+    load_turn_records()
     try:
         server = ThreadingHTTPServer((HOST, PORT), Handler)
     except OSError:

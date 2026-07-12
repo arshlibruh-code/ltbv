@@ -83,7 +83,18 @@ def main() -> int:
     ensure_daemon()
 
     if event == "UserPromptSubmit":
-        request("/turn/start", {"cwd": payload.get("cwd")}, 0.2)
+        prompt = payload.get("prompt") or payload.get("user_prompt") or ""
+        request(
+            "/turn/start",
+            {
+                "cwd": payload.get("cwd"),
+                "prompt": prompt,
+                "session_id": payload.get("session_id"),
+                "turn_id": payload.get("turn_id") or payload.get("prompt_id"),
+                "transcript_path": payload.get("transcript_path"),
+            },
+            0.2,
+        )
         return 0
 
     agent = "claude" if os.environ.get("CLAUDE_PROJECT_DIR") else "codex"

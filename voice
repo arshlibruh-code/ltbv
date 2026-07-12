@@ -1,11 +1,28 @@
 #!/bin/bash
 # voice: poke the let-there-be-voice daemon from any terminal.
-# usage: voice status | chill | repeat | slower | faster | brief | normal | shutup | unshutup | say "text"
+# usage: voice status | wake | doctor | chill | repeat | slower | faster | brief | normal | shutup | unshutup | say "text"
 set -u
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 PY="$ROOT/.venv/bin/python"
 BASE="http://127.0.0.1:7333"
 KILL="$ROOT/.voice-disabled"
+
+daemon_up() {
+  curl -sf -m 1 "$BASE/health" >/dev/null 2>&1
+}
+
+start_daemon() {
+  nohup "$PY" "$ROOT/daemon.py" >/dev/null 2>&1 &
+  for _ in $(seq 1 40); do
+    daemon_up && return 0
+    sleep 0.25
+  done
+  return 1
+}
+
+ensure_daemon() {
+  daemon_up || start_daemon
+}
 
 case "${1:-}" in
   status)
@@ -15,6 +32,23 @@ case "${1:-}" in
       echo "daemon: down"
     fi
     [ -f "$KILL" ] && echo "kill switch: ON (.voice-disabled present)" || echo "kill switch: off"
+    ;;
+  wake)
+    ensure_daemon && echo "daemon: up" || { echo "daemon: failed to start"; exit 1; }
+    ;;
+  doctor)
+    ensure_daemon || { echo "daemon: failed to start"; exit 1; }
+    curl -sf -m 3 "$BASE/doctor" | "$PY" -c '
+import json, sys
+d = json.load(sys.stdin)
+for check in d.get("checks", []):
+    mark = "ok" if check.get("ok") else ("warn" if not check.get("required") else "FAIL")
+    print(f"{check.get('"'"'name'"'"', '"'"'check'"'"'):<20} {mark:<4}  {check.get('"'"'detail'"'"', '"'"''"'"')}")
+git = d.get("git") or {}
+print(f"{'"'"'git'"'"':<20} info  {git.get('"'"'branch'"'"', '"'"'?'"'"')}{'"'"' · dirty'"'"' if git.get('"'"'dirty'"'"') else '"'"''"'"'}")
+print(f"{'"'"'overall'"'"':<20} {'"'"'ready'"'"' if d.get('"'"'ok'"'"') else '"'"'attention needed'"'"'}")
+' || { echo "doctor: daemon did not respond"; exit 1; }
+    command -v uv >/dev/null 2>&1 && echo "uv                   ok    installed" || echo "uv                   FAIL  missing"
     ;;
   chill|stop)
     curl -sf -m 2 -X POST "$BASE/stop" -d '{}' >/dev/null && echo "chilled" || echo "daemon down, nothing to chill"
@@ -34,18 +68,12 @@ case "${1:-}" in
     shift
     [ $# -ge 1 ] || { echo "usage: voice say \"text\""; exit 1; }
     PAYLOAD=$(printf '%s' "$*" | "$PY" -c 'import json,sys; print(json.dumps({"text": sys.stdin.read()}))')
-    if ! curl -sf -m 2 -X POST "$BASE/speak" -d "$PAYLOAD" >/dev/null 2>&1; then
-      nohup "$PY" "$ROOT/daemon.py" >/dev/null 2>&1 &
-      for _ in $(seq 1 40); do
-        curl -sf -m 1 "$BASE/health" >/dev/null 2>&1 && break
-        sleep 0.25
-      done
-      curl -sf -m 2 -X POST "$BASE/speak" -d "$PAYLOAD" >/dev/null 2>&1
-    fi
+    ensure_daemon || { echo "daemon failed to start"; exit 1; }
+    curl -sf -m 2 -X POST "$BASE/speak" -d "$PAYLOAD" >/dev/null 2>&1 || { echo "queue failed"; exit 1; }
     echo "queued"
     ;;
   *)
-    echo "usage: voice status|chill|repeat|slower|faster|brief|normal|shutup|unshutup|say \"text\""
+    echo "usage: voice status|wake|doctor|chill|repeat|slower|faster|brief|normal|shutup|unshutup|say \"text\""
     exit 1
     ;;
 esac

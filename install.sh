@@ -48,13 +48,11 @@ ROOT="${LTBV_HOME:-$HOME/.local/share/ltbv}"
 
 case "${1:-}" in
   open|controller)
-    "$ROOT/voice" say "Let there be voice is live. I can talk back now." >/dev/null 2>&1
+    "$ROOT/voice" wake >/dev/null 2>&1
     open http://127.0.0.1:7333/
     ;;
   doctor)
-    "$ROOT/voice" status
-    command -v uv >/dev/null 2>&1 && echo "uv: ok" || echo "uv: missing"
-    curl -sf -m 1 http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && echo "ollama: reachable" || echo "ollama: not running (optional)"
+    exec "$ROOT/voice" doctor
     ;;
   *)
     exec "$ROOT/voice" "$@"
