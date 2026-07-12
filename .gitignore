@@ -10,4 +10,6 @@ bench/
 .clips/
 .turns.json
 .timeline.json
+.voice-inbox.json
+.media-duck-lease.json
 voices/
