@@ -8,13 +8,16 @@ import os
 import queue
 import re
 import resource
+import shlex
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 import traceback
+import urllib.error
 import urllib.parse
 import urllib.request
 import wave
@@ -45,41 +48,96 @@ PEAK_TARGET = 160
 SAMPLE_RATE = 24000
 
 DEFAULT_CONDENSE_PROMPT = (
-    "You are speaking for a coding agent after it finishes a turn. "
+    "You are speaking for a coding agent after it has finished a turn. "
     "The user hears this out loud, so sound like a calm coding partner, not a report. "
     "Say what changed, what matters, or what the user should notice next. "
-    "Use 2-3 short natural sentences. "
-    "If the reply contains a table, summarize the table's meaning conversationally instead of reading cells row by row. "
-    "Do not read code, diffs, file paths, URLs, markdown, bullets, or headings."
+    "If the reply contains a table, summarize the table's meaning conversationally. "
 )
 
-CONDENSE_STYLE_PROMPTS = {
-    "clean": "Style: clean and direct. No filler words.",
-    "natural": (
-        "Style: natural spoken summary. You may use one light hesitation marker "
-        "only if it helps the sentence feel conversational."
-    ),
-    "radio": "Style: crisp radio check. Short, clear, and a little more present.",
-}
-
 CATALOG_VOICES = (
-    "alba", "anna", "azelma", "bill_boerst", "caro_davy", "charles", "cosette",
-    "eponine", "estelle", "eve", "fantine", "george", "giovanni", "jane",
-    "javert", "jean", "juergen", "lola", "marius", "mary", "michael", "paul",
-    "peter_yearsley", "rafael", "stuart_bell", "vera",
+    "alba",
+    "anna",
+    "azelma",
+    "bill_boerst",
+    "caro_davy",
+    "charles",
+    "cosette",
+    "eponine",
+    "estelle",
+    "eve",
+    "fantine",
+    "george",
+    "giovanni",
+    "jane",
+    "javert",
+    "jean",
+    "juergen",
+    "lola",
+    "marius",
+    "mary",
+    "michael",
+    "paul",
+    "peter_yearsley",
+    "rafael",
+    "stuart_bell",
+    "vera",
 )
 
 KOKORO_VOICES = (
-    "af_alloy", "af_aoede", "af_bella", "af_heart", "af_jessica", "af_kore",
-    "af_nicole", "af_nova", "af_river", "af_sarah", "af_sky", "am_adam",
-    "am_echo", "am_eric", "am_fenrir", "am_liam", "am_michael", "am_onyx",
-    "am_puck", "am_santa", "bf_alice", "bf_emma", "bf_isabella", "bf_lily",
-    "bm_daniel", "bm_fable", "bm_george", "bm_lewis", "ef_dora", "em_alex",
-    "em_santa", "ff_siwis", "hf_alpha", "hf_beta", "hm_omega", "hm_psi",
-    "if_sara", "im_nicola", "jf_alpha", "jf_gongitsune", "jf_nezumi",
-    "jf_tebukuro", "jm_kumo", "pf_dora", "pm_alex", "pm_santa",
-    "zf_xiaobei", "zf_xiaoni", "zf_xiaoxiao", "zf_xiaoyi", "zm_yunjian",
-    "zm_yunxi", "zm_yunxia", "zm_yunyang",
+    "af_alloy",
+    "af_aoede",
+    "af_bella",
+    "af_heart",
+    "af_jessica",
+    "af_kore",
+    "af_nicole",
+    "af_nova",
+    "af_river",
+    "af_sarah",
+    "af_sky",
+    "am_adam",
+    "am_echo",
+    "am_eric",
+    "am_fenrir",
+    "am_liam",
+    "am_michael",
+    "am_onyx",
+    "am_puck",
+    "am_santa",
+    "bf_alice",
+    "bf_emma",
+    "bf_isabella",
+    "bf_lily",
+    "bm_daniel",
+    "bm_fable",
+    "bm_george",
+    "bm_lewis",
+    "ef_dora",
+    "em_alex",
+    "em_santa",
+    "ff_siwis",
+    "hf_alpha",
+    "hf_beta",
+    "hm_omega",
+    "hm_psi",
+    "if_sara",
+    "im_nicola",
+    "jf_alpha",
+    "jf_gongitsune",
+    "jf_nezumi",
+    "jf_tebukuro",
+    "jm_kumo",
+    "pf_dora",
+    "pm_alex",
+    "pm_santa",
+    "zf_xiaobei",
+    "zf_xiaoni",
+    "zf_xiaoxiao",
+    "zf_xiaoyi",
+    "zm_yunjian",
+    "zm_yunxi",
+    "zm_yunxia",
+    "zm_yunyang",
 )
 
 
@@ -183,11 +241,14 @@ class KokoroEngine(TTSEngine):
             raise RuntimeError(f"kokoro is not installed. Run: {self.install_command}")
         if lang_code not in self.pipelines:
             os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
-            from kokoro import KPipeline
             import torch
+            from kokoro import KPipeline
 
             device = "cpu"
-            if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            if (
+                getattr(torch.backends, "mps", None)
+                and torch.backends.mps.is_available()
+            ):
                 device = "mps"
             self.pipelines[lang_code] = KPipeline(
                 lang_code=lang_code, repo_id="hexgrad/Kokoro-82M", device=device
@@ -225,10 +286,10 @@ CONFIG_SPEC = {
     "max_direct_chars": {"default": 400, "kind": "int", "min": 50, "max": 5000},
     "idle_exit_s": {"default": 600, "kind": "int", "min": 60, "max": 86400},
     "project_window_s": {"default": 600, "kind": "int", "min": 30, "max": 7200},
-    "condense_provider": {"default": "deepseek", "kind": "condense_provider"},
+    "condense_provider": {"default": "ollama", "kind": "condense_provider"},
     "condense_model": {"default": "deepseek-v4-flash", "kind": "str"},
-    "condense_timeout_s": {"default": 12, "kind": "int", "min": 2, "max": 60},
-    "speech_style": {"default": "clean", "kind": "speech_style"},
+    "condense_ollama_model": {"default": "qwen3.5:4b", "kind": "str"},
+    "condense_timeout_s": {"default": 30, "kind": "int", "min": 2, "max": 60},
     "rate": {"default": 1.0, "kind": "float", "min": 0.5, "max": 3.0},
     "volume": {"default": 1.0, "kind": "float", "min": 0.0, "max": 1.0},
     "temperature": {"default": 0.7, "kind": "float", "min": 0.1, "max": 1.5},
@@ -250,7 +311,9 @@ def git_rev() -> str | None:
     try:
         out = subprocess.run(
             ["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=2,
+            capture_output=True,
+            text=True,
+            timeout=2,
         )
         return out.stdout.strip() or None
     except Exception:
@@ -281,6 +344,7 @@ clip_ring = OrderedDict()
 config = {key: spec["default"] for key, spec in CONFIG_SPEC.items()}
 duck_state = {"did_duck": False, "saved_volume": None}
 duck_lock = threading.Lock()
+
 
 def active_engine_name() -> str:
     return config.get("engine", "pocket")
@@ -400,12 +464,7 @@ def validate_field(key: str, value):
         return value
     if kind == "condense_provider":
         value = str(value).strip().lower()
-        if value not in {"deepseek", "none"}:
-            raise ValueError(key)
-        return value
-    if kind == "speech_style":
-        value = str(value).strip().lower()
-        if value not in CONDENSE_STYLE_PROMPTS:
+        if value not in {"deepseek", "ollama", "none"}:
             raise ValueError(key)
         return value
     raise ValueError(key)
@@ -557,33 +616,85 @@ def read_deepseek_env() -> dict:
     return data.get("env", {})
 
 
+def condense_via_ollama(text: str) -> str | None:
+    system_prompt = config["condense_prompt"]
+    body = {
+        "model": config.get("condense_ollama_model") or "qwen3.5:4b",
+        "stream": True,
+        "think": False,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": text},
+        ],
+    }
+    payload = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        "http://127.0.0.1:11434/api/chat",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        chunks = []
+        with urllib.request.urlopen(
+            req, timeout=config["condense_timeout_s"]
+        ) as resp:
+            for line in resp:
+                line = line.strip()
+                if not line:
+                    continue
+                data = json.loads(line)
+                chunks.append((data.get("message") or {}).get("content", ""))
+                if data.get("done"):
+                    break
+        return strip_markdown("".join(chunks)) or None
+    except Exception as exc:
+        append_log(
+            "condense_error",
+            provider="ollama",
+            detail=str(exc)[:300],
+            error=type(exc).__name__,
+        )
+        return None
+
+
 def condense(text: str) -> str | None:
     provider = config.get("condense_provider", "deepseek")
     if provider == "none":
         return None
+    if provider == "ollama":
+        return condense_via_ollama(text)
     if provider != "deepseek":
         append_log("condense_error", provider=provider, detail="unsupported provider")
         return None
     try:
         env = read_deepseek_env()
-        token = env.get("ANTHROPIC_AUTH_TOKEN")
-        if not token:
-            return None
-        style = CONDENSE_STYLE_PROMPTS.get(
-            config.get("speech_style", "clean"), CONDENSE_STYLE_PROMPTS["clean"]
+    except Exception as exc:
+        append_log(
+            "condense_error",
+            provider=provider,
+            detail=str(exc)[:300],
+            error=type(exc).__name__,
         )
-        system_prompt = f"{config['condense_prompt']}\n\n{style}"
-        body = {
-            "model": config.get("condense_model") or "deepseek-v4-flash",
-            "max_tokens": 1000,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": text},
-            ],
-        }
+        return None
+    token = env.get("ANTHROPIC_AUTH_TOKEN")
+    if not token:
+        append_log("condense_error", provider=provider, detail="missing token")
+        return None
+    system_prompt = config["condense_prompt"]
+    body = {
+        "model": config.get("condense_model") or "deepseek-v4-flash",
+        "max_tokens": 1000,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": text},
+        ],
+    }
+    payload = json.dumps(body).encode("utf-8")
+    for attempt in range(2):
         req = urllib.request.Request(
             "https://api.deepseek.com/anthropic/v1/messages",
-            data=json.dumps(body).encode("utf-8"),
+            data=payload,
             headers={
                 "Content-Type": "application/json",
                 "x-api-key": token,
@@ -591,14 +702,40 @@ def condense(text: str) -> str | None:
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=config["condense_timeout_s"]) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        content = data.get("content") or []
-        for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
-                return strip_markdown(block.get("text", "")) or None
-    except Exception:
-        return None
+        try:
+            with urllib.request.urlopen(
+                req, timeout=config["condense_timeout_s"]
+            ) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            content = data.get("content") or []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    return strip_markdown(block.get("text", "")) or None
+            append_log(
+                "condense_error",
+                provider=provider,
+                detail="empty response",
+                attempt=attempt + 1,
+            )
+        except urllib.error.HTTPError as exc:
+            detail = exc.read(300).decode("utf-8", "replace")
+            append_log(
+                "condense_error",
+                provider=provider,
+                detail=detail,
+                status=exc.code,
+                attempt=attempt + 1,
+            )
+        except Exception as exc:
+            append_log(
+                "condense_error",
+                provider=provider,
+                detail=str(exc)[:300],
+                error=type(exc).__name__,
+                attempt=attempt + 1,
+            )
+        if attempt == 0:
+            time.sleep(0.4)
     return None
 
 
@@ -739,7 +876,16 @@ def player_proc(path: Path):
     if FFPLAY and config.get("stream_playback", True):
         af = f"atempo={min(2.0, max(0.5, rate))},volume={vol}"
         return subprocess.Popen(
-            [FFPLAY, "-nodisp", "-autoexit", "-loglevel", "quiet", "-af", af, str(path)],
+            [
+                FFPLAY,
+                "-nodisp",
+                "-autoexit",
+                "-loglevel",
+                "quiet",
+                "-af",
+                af,
+                str(path),
+            ],
             start_new_session=True,
         )
     args = ["afplay"]
@@ -902,8 +1048,8 @@ def speak(
     except Exception:
         log_error("ring_write")
 
-    duration = total_samples / engine.sample_rate / min(
-        2.0, max(0.5, float(config["rate"]))
+    duration = (
+        total_samples / engine.sample_rate / min(2.0, max(0.5, float(config["rate"])))
     )
 
     with state_lock:
@@ -921,8 +1067,12 @@ def speak(
                 active_cwd = cwd
                 last_spoken_ts = time.time()
                 now_speaking = {
-                    "text": text[:240], "voice": voice, "kind": kind, "engine": engine.name,
-                    "project": project_name(cwd), "ts": last_spoken_ts,
+                    "text": text[:240],
+                    "voice": voice,
+                    "kind": kind,
+                    "engine": engine.name,
+                    "project": project_name(cwd),
+                    "ts": last_spoken_ts,
                 }
     except Exception:
         log_error("player")
@@ -932,10 +1082,14 @@ def speak(
         _finish(None)
         return None
     publish({"event": "now", "on": True, **now_speaking})
-    publish({
-        "event": "wave", "peaks": downsample_peaks(peaks),
-        "duration": round(duration, 2), "clip": clip_id,
-    })
+    publish(
+        {
+            "event": "wave",
+            "peaks": downsample_peaks(peaks),
+            "duration": round(duration, 2),
+            "clip": clip_id,
+        }
+    )
     _finish(proc)
     return clip_id
 
@@ -987,8 +1141,19 @@ def clone_voice(name: str, audio_b64: str) -> tuple[bool, str]:
         if not FFMPEG:
             return False, "ffmpeg not found, cannot convert the recording"
         conv = subprocess.run(
-            [FFMPEG, "-y", "-i", str(src), "-ac", "1", "-ar", str(SAMPLE_RATE), str(dst)],
-            capture_output=True, timeout=30,
+            [
+                FFMPEG,
+                "-y",
+                "-i",
+                str(src),
+                "-ac",
+                "1",
+                "-ar",
+                str(SAMPLE_RATE),
+                str(dst),
+            ],
+            capture_output=True,
+            timeout=30,
         )
         if conv.returncode != 0 or not dst.exists():
             return False, "could not decode that audio file"
@@ -998,7 +1163,10 @@ def clone_voice(name: str, audio_b64: str) -> tuple[bool, str]:
             dst.unlink(missing_ok=True)
             msg = str(exc)
             if "voice cloning" in msg or "download the weights" in msg:
-                return False, "cloning locked: accept terms at huggingface.co/kyutai/pocket-tts and run hf auth login"
+                return (
+                    False,
+                    "cloning locked: accept terms at huggingface.co/kyutai/pocket-tts and run hf auth login",
+                )
             return False, "could not build a voice from that audio"
         ENGINES["pocket"].drop_voice(name)
         return True, name
@@ -1065,7 +1233,10 @@ def process_job(job: dict) -> None:
         current_generation = generation_for(key)
     if stale:
         append_log(
-            "speak_stale", cwd=cwd, generation=gen, current_generation=current_generation
+            "speak_stale",
+            cwd=cwd,
+            generation=gen,
+            current_generation=current_generation,
         )
         return
     voice = voice_for_job(job)
@@ -1315,12 +1486,16 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_header("Cache-Control", "no-cache")
                     self.end_headers()
                     hello = {"event": "hello", "now": now_speaking}
-                    self.wfile.write(f"data: {json.dumps(hello, ensure_ascii=True)}\n\n".encode())
+                    self.wfile.write(
+                        f"data: {json.dumps(hello, ensure_ascii=True)}\n\n".encode()
+                    )
                     self.wfile.flush()
                     while True:
                         try:
                             ev = sub.get(timeout=15)
-                            self.wfile.write(f"data: {json.dumps(ev, ensure_ascii=True)}\n\n".encode())
+                            self.wfile.write(
+                                f"data: {json.dumps(ev, ensure_ascii=True)}\n\n".encode()
+                            )
                         except queue.Empty:
                             self.wfile.write(b": ping\n\n")
                         self.wfile.flush()
@@ -1386,6 +1561,19 @@ class Handler(BaseHTTPRequestHandler):
                 gen = stop_speech(data.get("cwd"))
                 json_response(self, 202, {"ok": True, "generation": gen})
                 return
+            if self.path == "/restart":
+                json_response(self, 200, {"ok": True, "restarting": True})
+                cmd = f"sleep 0.3; exec {shlex.quote(sys.executable)} {shlex.quote(str(ROOT / 'daemon.py'))}"
+                subprocess.Popen(
+                    ["/bin/sh", "-c", cmd],
+                    cwd=str(ROOT),
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                append_log("restart_requested")
+                os._exit(0)
             if self.path == "/mute":
                 data = read_json(self)
                 value = bool(data.get("muted"))
@@ -1408,7 +1596,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not text.strip():
                     json_response(self, 202, {"ok": True, "skipped": True})
                     return
-                kind = "notification" if data.get("event") == "Notification" else "reply"
+                kind = (
+                    "notification" if data.get("event") == "Notification" else "reply"
+                )
                 gen = enqueue_speak(
                     text, cwd, kind=kind, agent=data.get("agent"), engine=engine_name
                 )
@@ -1428,7 +1618,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if self.path == "/bench":
                 data = read_json(self)
-                text = str(data.get("text") or AUDITION_TEXT.format(voice="bench")).strip()
+                text = str(
+                    data.get("text") or AUDITION_TEXT.format(voice="bench")
+                ).strip()
                 voice = data.get("voice")
                 results = []
                 for name, engine in ENGINES.items():
@@ -1460,7 +1652,9 @@ class Handler(BaseHTTPRequestHandler):
                 if voice not in voices:
                     json_response(self, 400, {"ok": False, "error": "unknown_voice"})
                     return
-                text = data.get("text") or AUDITION_TEXT.format(voice=voice.replace("_", " "))
+                text = data.get("text") or AUDITION_TEXT.format(
+                    voice=voice.replace("_", " ")
+                )
                 gen = enqueue_speak(
                     text,
                     None,

@@ -91,7 +91,7 @@ import random
 lines = [
     "Can you hear me? I'm wired into the voice layer now.",
     "I'm on the wire. You should be able to hear me now.",
-    "Voice link is live. I can talk back now.",
+    "Let there be voice is live. I can talk back now.",
     "Hook path is live. If you can hear this, the loop works.",
     "Can you hear me? If yes, the hook path works.",
     "Voice channel is armed. Let there be voice.",
@@ -165,13 +165,13 @@ if [ "$GOT" = "401" ]; then pass "config roundtrip"; else fail "config roundtrip
 ERRS=$(curl -sf -m 2 -X POST "$BASE/config" -d '{"max_direct_chars": "garbage"}' | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin)["errors"]))')
 if [ "$ERRS" = "1" ] && curl -sf -m 2 "$BASE/health" >/dev/null; then pass "config rejects bad input"; else fail "config rejects bad input"; fi
 
-# 8. summary style validates as a closed config set
-STYLE=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["config"]["speech_style"])')
-curl -sf -m 2 -X POST "$BASE/config" -d '{"speech_style": "natural"}' >/dev/null
-GOT=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["config"]["speech_style"])')
-curl -sf -m 2 -X POST "$BASE/config" -d "{\"speech_style\": \"$STYLE\"}" >/dev/null
-BAD=$(curl -sf -m 2 -X POST "$BASE/config" -d '{"speech_style": "ramble"}' | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin)["errors"]))')
-if [ "$GOT" = "natural" ] && [ "$BAD" = "1" ]; then pass "summary style config"; else fail "summary style config"; fi
+# 8. condense provider validates as a closed config set
+PROVIDER=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["config"]["condense_provider"])')
+curl -sf -m 2 -X POST "$BASE/config" -d '{"condense_provider": "ollama"}' >/dev/null
+GOT=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["config"]["condense_provider"])')
+curl -sf -m 2 -X POST "$BASE/config" -d "{\"condense_provider\": \"$PROVIDER\"}" >/dev/null
+BAD=$(curl -sf -m 2 -X POST "$BASE/config" -d '{"condense_provider": "ramble"}' | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin)["errors"]))')
+if [ "$GOT" = "ollama" ] && [ "$BAD" = "1" ]; then pass "condense provider config"; else fail "condense provider config"; fi
 
 if [ "$FAIL" = 0 ]; then echo "SMOKE PASS"; else echo "SMOKE FAIL"; fi
 exit "$FAIL"
