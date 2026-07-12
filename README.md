@@ -11,18 +11,19 @@ A local voice layer for coding agents.
 ## Install
 
 ```bash
-git clone https://github.com/arshlibruh-code/ltbv.git
-cd ltbv
-uv sync
+curl -fsSL https://raw.githubusercontent.com/arshlibruh-code/ltbv/main/install.sh | bash
+~/.local/bin/ltbv open
 ```
 
-Point the Claude Code or Codex hook at:
+The installer configures Claude Code and Codex hooks automatically, backs up existing settings, and installs into `~/.local/share/ltbv`.
+
+Optional Browser/YouTube ducking: load `~/.local/share/ltbv/browser-extension` as an unpacked extension in Arc or Chrome.
+
+For a health check:
 
 ```bash
-$REPO/.venv/bin/python $REPO/hook.py
+~/.local/bin/ltbv doctor
 ```
-
-The hook starts the daemon when needed.
 
 ## Controller
 

@@ -291,7 +291,7 @@
               <tr><td>TTS engine</td><td>Pocket TTS default, Kokoro-82M optional</td><td>Engines sit behind a lazy <code>load / voices / synth</code> registry. Pocket remains the live default. Kokoro exposes <span class="num">54</span> voices and joins the controller shootout. Warm bench: Pocket RTF <span class="num">0.160</span>, Kokoro RTF <span class="num">0.096</span>.</td></tr>
               <tr><td>Length limit</td><td>None from the engine</td><td>Generation is chunk-streamed, so time scales linearly with text and memory stays flat. Arbitrarily long input works; the <span class="num">400</span>-char condense cap is our taste policy, not a Pocket limit.</td></tr>
               <tr><td>Condense</td><td>deepseek / ollama / none, switchable live</td><td>DeepSeek is the network path (Anthropic-compatible endpoint, one call). Ollama (2026-07-10) runs <code>qwen3.5:4b</code> locally at <span class="num">11434</span>, streamed, thinking disabled: ~<span class="num">3s</span> versus DeepSeek's <span class="num">20-30s</span> and its recurring timeouts. Table replies send the raw full response either way so the model can summarize the table instead of losing it. <code>condense_prompt</code> is the only tone knob; the old clean/natural/radio style layer was removed 2026-07-10.</td></tr>
-              <tr><td>Playback</td><td>ffplay (<code>atempo</code>) or afplay</td><td>ffplay preferred for pitch-preserving rate; afplay fallback. Optional Spotify-only ducking can fade Spotify down during actual TTS playback, then restore the exact saved volume when playback finishes or is stopped.</td></tr>
+              <tr><td>Playback</td><td>ffplay (<code>atempo</code>) or afplay</td><td>ffplay preferred for pitch-preserving rate; afplay fallback. Optional Spotify and Browser YouTube ducking can fade media down during actual TTS playback, then restore the saved level when playback finishes or is stopped.</td></tr>
               <tr><td>Runtime</td><td>Python <span class="num">3.11</span> stdlib + PyTorch</td><td>Daemon is stdlib-only (HTTP, threads, queue, SSE). PyTorch rides in under Pocket. No web framework.</td></tr>
               <tr><td>Runs local</td><td>Everything, condense included if set to Ollama</td><td>Synthesis, playback, cloning, config, the controller: always on-device. Condense only leaves the machine if <code>condense_provider</code> is set to <code>deepseek</code>; <code>ollama</code> and <code>none</code> are fully local.</td></tr>
             </tbody>
@@ -310,7 +310,7 @@
               <tr><td>Privacy</td><td>All synthesis and audio local, always. Condense is local too when set to Ollama; the DeepSeek path (still the default) sends long responses and table replies over the network.</td><td><span class="tag yellow">1 asterisk, opt-out</span></td></tr>
               <tr><td>Latency</td><td>Warm first-audio under <span class="num">1s</span>. Hook exits within <span class="num">~100ms</span>. Measured: <span class="num">0.05s</span> warm first-audio on Pocket.</td><td><span class="tag">Passed</span></td></tr>
               <tr><td>Voice in</td><td>Not built. Hex (<code>com.kitlangton.Hex</code>, Parakeet STT) already covers it. This tool is one-way: agent to speaker.</td><td><span class="tag red">Non-goal</span></td></tr>
-              <tr><td>Non-goals</td><td>No PTY wrapper, no UI, no voice cloning, no packaging, no framework, no support for agents I don't use.</td><td><span class="tag red">Avoid</span></td></tr>
+              <tr><td>Non-goals</td><td>No PTY wrapper, no UI beyond the controller, no voice cloning by default, no native app packaging, no framework, no support for agents I don't use.</td><td><span class="tag red">Avoid</span></td></tr>
             </tbody>
           </table>
         </div>
@@ -351,7 +351,7 @@
               <tr><td>Instant interrupt</td><td>New user input kills current speech immediately, scoped to the project it came from.</td></tr>
               <tr><td>SHUT UP</td><td><code>.voice-disabled</code> in the repo root blocks wake-up and speech before anything else runs. Delete it to re-enable, no restart.</td></tr>
               <tr><td>Local, one asterisk</td><td>Everything runs on-device by default (<code>condense_provider</code> defaults to <code>ollama</code>). The asterisk only reappears if it's switched to <code>deepseek</code>.</td></tr>
-              <tr><td>Stay small</td><td>No framework, no packaging, no tests beyond the bench script. A handful of files. Personal tool, not a product. Amended 2026-07-06: "no config UI" fell deliberately; <code>controller.html</code> is the sanctioned tuning surface, served by the daemon. It is a remote, not a brain: all behavior stays in <code>daemon.py</code>.</td></tr>
+              <tr><td>Stay small</td><td>No framework or native app packaging, no tests beyond the bench script. A handful of files. Personal tool, not a product. Amended 2026-07-06: "no config UI" fell deliberately; <code>controller.html</code> is the sanctioned tuning surface, served by the daemon. It is a remote, not a brain: all behavior stays in <code>daemon.py</code>.</td></tr>
               <tr><td>Secrets</td><td>The current summarizer token is read at runtime from <code>~/.claude/settings.deepseek.json</code>. Never stored or committed in this repo.</td></tr>
             </tbody>
           </table>
@@ -605,7 +605,7 @@ command = "$REPO/.venv/bin/python $REPO/hook.py"</pre>
           <table>
             <thead><tr><th>Panel</th><th>What it does</th><th>Why it earns its place</th></tr></thead>
             <tbody>
-              <tr><td>Mixing Desk</td><td>The condense threshold as a draggable line over a live histogram of <code>spoken_chars</code> from <code>.voice.log</code>, with a "would have condensed: N%" readout. Below it: idle exit, prefix window, summary timeout, playback rate and volume, and Spotify ducking controls.</td><td>Turns the highest-impact knobs from magic numbers into something aimed by eye, against real data.</td></tr>
+              <tr><td>Mixing Desk</td><td>The condense threshold as a draggable line over a live histogram of <code>spoken_chars</code> from <code>.voice.log</code>, with a "would have condensed: N%" readout. Below it: idle exit, prefix window, summary timeout, playback rate and volume, and media ducking controls.</td><td>Turns the highest-impact knobs from magic numbers into something aimed by eye, against real data.</td></tr>
               <tr><td>Strip Inspector</td><td>Last reply raw beside what survived cleanup, deletions highlighted. Fed by the daemon keeping the last raw + cleaned pair in memory.</td><td>The cleaner silently eats sentences today. This is the permanent tuning surface for <code>strip_markdown</code>.</td></tr>
               <tr><td>Voice Lab</td><td>Dropdown of the <span class="num">26</span> Pocket catalog voices, an editable audition text box (paste anything, hear any voice read it), per-agent voice assignment (claude / codex / notification), drop-a-wav / record-in-browser clone zone (gated on the HF weights).</td><td>The moment plumbing becomes character: the ear knows who is talking without the prefix, and TTS is testable by pasting text.</td></tr>
             </tbody>
@@ -615,7 +615,7 @@ command = "$REPO/.venv/bin/python $REPO/hook.py"</pre>
           <div class="filter-row"><b>Serving</b><span><code>GET /</code> on <span class="num">7333</span> returns <code>controller.html</code>. Same origin, no CORS, still one self-contained file.</span><span class="tag blue">Core</span></div>
           <div class="filter-row"><b>Config</b><span><code>GET/POST /config</code> backed by <code>config.json</code> in the repo root, hot-applied, no restart. Daemon constants become defaults.</span><span class="tag blue">Core</span></div>
           <div class="filter-row"><b>Voices</b><span><code>GET /voices</code> lists the catalog; <code>POST /audition</code> speaks one fixed sentence in a chosen voice. Voice states cached so switching stays cheap.</span><span class="tag blue">Core</span></div>
-          <div class="filter-row"><b>Ducking</b><span>Optional Spotify-only fade via <code>osascript</code>. The daemon saves Spotify's current volume, fades to <code>duck_target_volume</code> right before playback, and restores in <code>_finish()</code>. No global volume, no browser ducking, no pause/resume.</span><span class="tag blue">Core</span></div>
+          <div class="filter-row"><b>Ducking</b><span>Optional Spotify fade via <code>osascript</code> plus Browser YouTube page-volume ducking through the companion Chromium extension. Each target saves its current level, fades to <code>duck_target_volume</code> before playback, and restores in <code>_finish()</code>. No global volume, no tab mute, no pause/resume.</span><span class="tag blue">Core</span></div>
           <div class="filter-row"><b>Data</b><span><code>GET /log/tail</code> returns recent log entries for the histogram plus the last raw/cleaned pair for the inspector.</span><span class="tag blue">Core</span></div>
           <div class="filter-row"><b>Restart</b><span><code>POST /restart</code> (2026-07-10): daemon acks, logs <code>restart_requested</code>, spawns a detached shell that sleeps <span class="num">300ms</span> then execs a fresh <code>daemon.py</code>, and the handler calls <code>os._exit(0)</code>. Picks up any code or config change without a manual kill. Controller button polls <code>/health</code> and reloads once it answers.</span><span class="tag blue">Core</span></div>
           <div class="filter-row"><b>Rules</b><span>House skin: dark grey, radius 0, Inter + Share Tech Mono, compact. No framework, stdlib-only daemon side. The controller is a remote, not a brain. (Amended: controller v2 added an SSE live layer, see Locked Decisions.)</span><span class="tag red">Hard</span></div>
@@ -809,7 +809,7 @@ permit exactly this controller, nothing more):
 - SHUT UP: .voice-disabled in the repo root blocks everything.
 - Everything local except the optional summarizer condense call; only the daemon
   touches the network or the token.
-- Keep it small: no framework, no packaging, no tests beyond the bench
+- Keep it small: no framework, no native app packaging, no tests beyond the bench
   script. The controller is the only UI, and it stays one file. Personal
   tool, not a product.
 

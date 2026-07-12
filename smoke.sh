@@ -173,5 +173,11 @@ curl -sf -m 2 -X POST "$BASE/config" -d "{\"condense_provider\": \"$PROVIDER\"}"
 BAD=$(curl -sf -m 2 -X POST "$BASE/config" -d '{"condense_provider": "ramble"}' | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin)["errors"]))')
 if [ "$GOT" = "ollama" ] && [ "$BAD" = "1" ]; then pass "condense provider config"; else fail "condense provider config"; fi
 
+BROWSER_DUCK=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(str(json.load(sys.stdin)["config"]["browser_youtube_ducking_enabled"]).lower())')
+curl -sf -m 2 -X POST "$BASE/config" -d '{"browser_youtube_ducking_enabled": true}' >/dev/null
+BROWSER_GOT=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(str(json.load(sys.stdin)["config"]["browser_youtube_ducking_enabled"]).lower())')
+curl -sf -m 2 -X POST "$BASE/config" -d "{\"browser_youtube_ducking_enabled\": $BROWSER_DUCK}" >/dev/null
+if [ "$BROWSER_GOT" = "true" ]; then pass "browser duck config"; else fail "browser duck config"; fi
+
 if [ "$FAIL" = 0 ]; then echo "SMOKE PASS"; else echo "SMOKE FAIL"; fi
 exit "$FAIL"
