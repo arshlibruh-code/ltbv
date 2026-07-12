@@ -2,9 +2,12 @@
 import hashlib
 import json
 import math
+import os
 import re
 import struct
 import subprocess
+import time
+from datetime import datetime
 from pathlib import Path
 
 
@@ -60,6 +63,21 @@ BUILD_PATTERNS = (
     ("merged", (r"pull request successfully merged", r"\bmerged\b.*\bmain\b")),
 )
 
+META_SPEECH_PATTERNS = (
+    r"\bno action needed\b",
+    r"\bjust run git status\b",
+    r"\bthe (?:assistant|response|reply|prompt|user)\b",
+    r"\bthis (?:summary|response|reply)\b",
+    r"\bi (?:summarized|condensed)\b",
+    r"\bas an ai\b",
+    r"\blet me know what you think\b",
+)
+
+TRIVIAL_SUCCESS = re.compile(
+    r"^(?:done|fixed|complete|completed|ready|finished|all set|sorted)[.!]*$",
+    re.IGNORECASE,
+)
+
 
 def _run_git(cwd: str | None, *args: str) -> str:
     if not cwd:
@@ -85,10 +103,22 @@ def git_snapshot(cwd: str | None) -> dict:
     root = git_root(cwd)
     if not root:
         return {}
+    status = _run_git(root, "status", "--porcelain=v1", "--untracked-files=all")
+    fingerprints = {}
+    for _, relative in _status_paths(status)[:200]:
+        path = Path(root) / relative
+        try:
+            if path.is_file() and path.stat().st_size <= 5_000_000:
+                fingerprints[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            pass
     return {
         "root": root,
         "head": _run_git(root, "rev-parse", "HEAD"),
-        "status": _run_git(root, "status", "--porcelain=v1", "--untracked-files=all"),
+        "branch": _run_git(root, "branch", "--show-current"),
+        "status": status,
+        "fingerprints": fingerprints,
+        "captured_at": time.time(),
     }
 
 
@@ -117,37 +147,251 @@ def _diff_paths(raw: str) -> list[tuple[str, str]]:
     return found
 
 
+def concept_for_path(path: str) -> str:
+    lowered = path.lower()
+    name = Path(path).name.lower()
+    if "browser-extension" in lowered:
+        return "browser extension"
+    if name == "daemon.py":
+        return "voice daemon"
+    if name == "controller.html":
+        return "controller"
+    if name == "hook.py":
+        return "agent hooks"
+    if name == "install.sh":
+        return "installer"
+    if name == "voice":
+        return "command-line controls"
+    if name == "smoke.sh" or name.startswith("test_"):
+        return "tests"
+    if name in {"readme.md", "claude.md", "field-guide.html", "build-packet.html"}:
+        return "documentation"
+    stem = Path(path).stem.replace("_", " ").replace("-", " ").strip()
+    return stem or "project files"
+
+
 def git_change_summary(cwd: str | None, before: dict | None = None) -> dict:
     root = git_root(cwd)
     if not root:
-        return {"count": 0, "files": [], "summary": "", "verified": False}
+        return {"count": 0, "files": [], "summary": "Git evidence unavailable.", "verified": False, "reason": "not a Git repository"}
 
     changes = []
     before = before or {}
+    if before and before.get("root") != root:
+        return {"count": 0, "files": [], "summary": "Git evidence unavailable because the repository changed.", "verified": False, "reason": "repository changed"}
     before_head = before.get("head") if before.get("root") == root else None
-    if before_head:
-        changes.extend(_diff_paths(_run_git(root, "diff", "--name-status", before_head, "--")))
-    changes.extend(_status_paths(_run_git(root, "status", "--porcelain=v1", "--untracked-files=all")))
+    current_head = _run_git(root, "rev-parse", "HEAD")
+    if before_head and current_head and before_head != current_head:
+        changes.extend(_diff_paths(_run_git(root, "diff", "--name-status", before_head, current_head, "--")))
+    current_status = _status_paths(_run_git(root, "status", "--porcelain=v1", "--untracked-files=all"))
+    baseline = {path: status for status, path in _status_paths(before.get("status", ""))}
+    fingerprints = before.get("fingerprints") or {}
+    for status, path in current_status:
+        changed = path not in baseline or baseline.get(path) != status
+        if not changed and path in fingerprints:
+            try:
+                current = hashlib.sha256((Path(root) / path).read_bytes()).hexdigest()
+                changed = current != fingerprints[path]
+            except OSError:
+                changed = True
+        if changed:
+            changes.append((status, path))
 
     deduped = {}
     for status, path in changes:
         deduped[path] = status
     files = list(deduped)
+    old_branch = before.get("branch")
+    branch = _run_git(root, "branch", "--show-current")
+    branch_changed = bool(old_branch and branch and old_branch != branch)
     if not files:
-        return {"count": 0, "files": [], "summary": "", "verified": True}
+        summary = f"Switched from {old_branch} to {branch}." if branch_changed else ""
+        return {"count": 0, "files": [], "summary": summary, "verified": True, "branch_changed": branch_changed}
 
-    shown = files[:4]
-    names = ", ".join(shown)
-    extra = len(files) - len(shown)
-    suffix = f", plus {extra} more" if extra else ""
-    noun = "file" if len(files) == 1 else "files"
+    concepts = []
+    for path in files:
+        concept = concept_for_path(path)
+        if concept not in concepts:
+            concepts.append(concept)
+    shown = concepts[:4]
+    if len(shown) == 1:
+        phrase = shown[0]
+    elif len(shown) == 2:
+        phrase = " and ".join(shown)
+    else:
+        phrase = ", ".join(shown[:-1]) + f", and {shown[-1]}"
+    extra = len(concepts) - len(shown)
+    suffix = f", plus {extra} more area" + ("s" if extra != 1 else "") if extra else ""
+    oversized = len(files) > 25
+    summary = (
+        f"A large change touched {len(files)} files across {len(concepts)} areas."
+        if oversized
+        else f"Updated the {phrase}{suffix}."
+    )
+    if branch_changed:
+        summary = f"Switched from {old_branch} to {branch}. {summary}"
     return {
         "count": len(files),
         "files": files,
+        "concepts": concepts,
         "statuses": deduped,
-        "summary": f"Changed {len(files)} {noun}: {names}{suffix}.",
+        "summary": summary,
         "verified": True,
+        "branch_changed": branch_changed,
+        "oversized": oversized,
     }
+
+
+def request_intent(text: str) -> str:
+    lowered = (text or "").lower()
+    tags = []
+    actions = (
+        ("fix", r"\b(?:fix|debug|repair)\b"),
+        ("build", r"\b(?:build|add|implement|create|make)\b"),
+        ("remove", r"\b(?:remove|delete|drop)\b"),
+        ("test", r"\b(?:test|verify|check|smoke)\b"),
+        ("review", r"\b(?:review|inspect|audit)\b"),
+        ("research", r"\b(?:research|search|investigate)\b"),
+        ("explain", r"\b(?:explain|tell me|what is|how does)\b"),
+    )
+    for tag, pattern in actions:
+        if re.search(pattern, lowered) and tag not in tags:
+            tags.append(tag)
+    constraints = (
+        ("do not commit", r"\b(?:do not|don't|dont) commit\b"),
+        ("do not push", r"\b(?:(?:do not|don't|dont) push|(?:do not|don't|dont) commit\s+or\s+push)\b"),
+        ("ask first", r"\b(?:ask me|confirm)\b.*\b(?:first|before|whenever)\b"),
+        ("commit", r"\bcommit\b"),
+        ("push", r"\bpush\b"),
+        ("deploy", r"\bdeploy\b"),
+    )
+    for tag, pattern in constraints:
+        if re.search(pattern, lowered) and tag not in tags:
+            if tag == "commit" and "do not commit" in tags:
+                continue
+            if tag == "push" and "do not push" in tags:
+                continue
+            tags.append(tag)
+    if not tags and "?" in text:
+        tags.append("question")
+    return " + ".join(tags[:5]) or "general request"
+
+
+TEST_COMMANDS = (
+    ("smoke", re.compile(r"(?:^|\s)(?:\./)?smoke\.sh(?:\s|$)")),
+    ("unit tests", re.compile(r"\b(?:pytest|unittest|vitest|jest|cargo test)\b")),
+    ("build", re.compile(r"\b(?:npm|pnpm|yarn)\s+(?:run\s+)?build\b|\bxcodebuild\b")),
+)
+
+
+def transcript_tool_evidence(path_str: str | None, started_at: float = 0, turn_id: str | None = None) -> dict:
+    result = {"verification": "unknown", "tests": [], "commands_seen": 0}
+    if not path_str:
+        return result
+    try:
+        path = Path(path_str)
+        if not path.is_file():
+            return result
+        lines = path.read_bytes()[-2_000_000:].decode("utf-8", "ignore").splitlines()
+    except OSError:
+        return result
+    calls = {}
+    outcomes = []
+
+    def record(command, output="", failed=None, exit_code=None):
+        command = str(command or "")
+        labels = [label for label, pattern in TEST_COMMANDS if pattern.search(command)]
+        if not labels:
+            return
+        result["commands_seen"] += 1
+        for label in labels:
+            if label not in result["tests"]:
+                result["tests"].append(label)
+        parsed = output
+        if isinstance(output, str):
+            try:
+                candidate = json.loads(output)
+                if isinstance(candidate, dict):
+                    parsed = candidate
+            except Exception:
+                pass
+        if isinstance(parsed, dict):
+            exit_code = parsed.get("exit_code", parsed.get("returncode", parsed.get("exitCode", exit_code)))
+            if failed is None and isinstance(parsed.get("success"), bool):
+                failed = not parsed["success"]
+            text = str(parsed.get("output") or parsed.get("stdout") or parsed.get("stderr") or "").lower()
+        else:
+            text = str(output or "").lower()
+        if exit_code is not None:
+            bad = int(exit_code) != 0
+            good = not bad
+        elif failed is not None:
+            bad = bool(failed)
+            good = not bad
+        else:
+            bad = bool(re.search(r"\b(?:fail(?:ed|ure)?|error)\b", text))
+            good = bool(re.search(r"\b(?:pass(?:ed)?|ok|success)\b", text))
+        outcomes.append("failed" if bad else "passed" if good else "unknown")
+
+    active_turn = None
+    for line in lines:
+        try:
+            obj = json.loads(line)
+        except Exception:
+            continue
+        payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else obj
+        if payload.get("type") == "turn_context":
+            active_turn = payload.get("turn_id") or active_turn
+        current_turn = payload.get("turn_id") or obj.get("turn_id")
+        line_turn = current_turn or active_turn
+        if turn_id and line_turn and str(line_turn) != str(turn_id):
+            continue
+        stamp = obj.get("timestamp", obj.get("ts", payload.get("timestamp", payload.get("ts"))))
+        event_time = None
+        if isinstance(stamp, (int, float)):
+            event_time = float(stamp)
+        elif isinstance(stamp, str):
+            try:
+                event_time = datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                pass
+        if started_at and event_time is not None and event_time < started_at:
+            continue
+        if started_at and event_time is None and not line_turn:
+            continue
+        item = payload.get("message") if payload.get("type") in {"assistant", "user"} else payload
+        content = item.get("content") if isinstance(item, dict) else None
+        blocks = content if isinstance(content, list) else []
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_use":
+                inp = block.get("input") or {}
+                calls[block.get("id")] = inp.get("command") or inp.get("cmd") or block.get("name", "")
+            elif block.get("type") == "tool_result":
+                command = calls.get(block.get("tool_use_id"), "")
+                record(command, block.get("content", ""), True if block.get("is_error") else None)
+        if payload.get("type") in {"function_call", "custom_tool_call"}:
+            args = payload.get("arguments") or payload.get("input") or ""
+            try:
+                parsed = json.loads(args) if isinstance(args, str) else args
+            except Exception:
+                parsed = {}
+            calls[payload.get("call_id")] = (parsed or {}).get("cmd") or (parsed or {}).get("command") or payload.get("name", "")
+        if payload.get("type") in {"function_call_output", "custom_tool_call_output"}:
+            record(calls.get(payload.get("call_id"), ""), payload.get("output", ""))
+        tool_result = obj.get("toolUseResult") or payload.get("toolUseResult")
+        if isinstance(tool_result, dict):
+            command = tool_result.get("command") or tool_result.get("commandName") or ""
+            output = tool_result.get("stdout") or tool_result.get("content") or ""
+            failed = None if "success" not in tool_result else not bool(tool_result.get("success"))
+            exit_code = tool_result.get("exit_code", tool_result.get("returncode"))
+            record(command, output, failed, exit_code)
+    if "failed" in outcomes:
+        result["verification"] = "failed"
+    elif "passed" in outcomes:
+        result["verification"] = "passed"
+    return result
 
 
 def classify_intent(text: str, kind: str = "reply") -> str:
@@ -193,6 +437,90 @@ def trim_to_words(text: str, limit: int) -> str:
         return " ".join(words)
     trimmed = " ".join(words[:limit]).rstrip(" ,;:")
     return trimmed + "."
+
+
+def _sentences(text: str) -> list[str]:
+    clean = re.sub(r"\s+", " ", text or "").strip()
+    return [part.strip() for part in re.split(r"(?<=[.!?])\s+", clean) if part.strip()]
+
+
+def verification_state(source: str) -> str:
+    lowered = (source or "").lower()
+    if re.search(r"smoke fail|tests? failed|check failed|build failed", lowered):
+        return "failed"
+    if re.search(r"not tested|untested|tests? (?:were )?not run|visual check (?:was )?not run", lowered):
+        return "untested"
+    if re.search(r"smoke pass|tests? passed|all checks? (?:have )?passed|verified successfully", lowered):
+        return "passed"
+    return "unknown"
+
+
+def contract_fallback(
+    source: str,
+    intent: str,
+    budget: int,
+    diff_summary: str = "",
+) -> str:
+    sentences = _sentences(source)
+    keywords = {
+        "blocker": ("blocked", "failed", "error", "cannot", "unable", "conflict"),
+        "needs_input": ("choose", "confirm", "which", "do you want", "need your input", "?"),
+        "warning": ("warning", "untested", "not tested", "manual", "caveat", "remaining"),
+        "success": ("passed", "fixed", "completed", "implemented", "merged", "done"),
+        "update": ("updated", "changed", "added", "removed", "now"),
+    }.get(intent, ())
+
+    ranked = sorted(
+        sentences,
+        key=lambda sentence: sum(token in sentence.lower() for token in keywords),
+        reverse=True,
+    )
+    chosen = ranked[0] if ranked else ""
+    state = verification_state(source)
+    if diff_summary and intent in {"success", "update"}:
+        chosen = diff_summary
+    if state == "failed":
+        failed = next(
+            (sentence for sentence in sentences if re.search(r"fail|error|blocked", sentence, re.I)),
+            "Verification failed.",
+        )
+        chosen = failed
+    elif state == "untested" and not re.search(r"untested|not tested|not run", chosen, re.I):
+        chosen = (chosen.rstrip(". ") + ". It is not tested yet.").strip()
+    elif state == "passed" and not re.search(r"pass|verified|green", chosen, re.I):
+        chosen = (chosen.rstrip(". ") + ". Verification passed.").strip()
+    return trim_to_words(chosen, budget)
+
+
+def enforce_spoken_contract(
+    candidate: str,
+    source: str,
+    intent: str,
+    budget: int,
+    diff_summary: str = "",
+) -> tuple[str, dict]:
+    candidate = re.sub(r"\s+", " ", candidate or "").strip()
+    reasons = []
+    if intent == "success" and TRIVIAL_SUCCESS.fullmatch(candidate):
+        return "", {"contract": "earcon_only", "contract_reasons": ["trivial_success"]}
+    for pattern in META_SPEECH_PATTERNS:
+        if re.search(pattern, candidate, re.IGNORECASE):
+            reasons.append("meta_speech")
+            break
+    state = verification_state(source)
+    if state == "failed" and re.search(r"\b(pass|passes|passed|works|green|successful)\b", candidate, re.I):
+        reasons.append("contradicts_failure")
+    if state == "untested" and not re.search(r"untested|not tested|not run|needs? (?:a )?(?:manual|visual) check", candidate, re.I):
+        reasons.append("hides_untested")
+    if len(candidate.split()) < 3 and not TRIVIAL_SUCCESS.fullmatch(candidate):
+        reasons.append("too_vague")
+    if reasons:
+        candidate = contract_fallback(source, intent, budget, diff_summary)
+        mode = "fallback"
+    else:
+        candidate = trim_to_words(candidate, budget)
+        mode = "accepted"
+    return candidate, {"contract": mode, "contract_reasons": reasons}
 
 
 def pronunciation_paths(cwd: str | None) -> list[Path]:

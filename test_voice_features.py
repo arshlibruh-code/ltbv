@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
@@ -8,6 +9,24 @@ import voice_features as vf
 
 
 class VoiceFeaturesTest(unittest.TestCase):
+    def test_speech_eval_cases(self):
+        cases = json.loads(Path("speech-evals.json").read_text())["cases"]
+        for case in cases:
+            with self.subTest(case=case["name"]):
+                spoken, meta = vf.enforce_spoken_contract(
+                    case["candidate"],
+                    case["source"],
+                    case["intent"],
+                    case["budget"],
+                    case.get("diff_summary", ""),
+                )
+                lowered = spoken.lower()
+                self.assertEqual(meta["contract"], case["mode"])
+                for phrase in case["must_include"]:
+                    self.assertIn(phrase, lowered)
+                for phrase in case["must_not_include"]:
+                    self.assertNotIn(phrase, lowered)
+
     def test_intent_and_build_signals(self):
         self.assertEqual(vf.classify_intent("SMOKE FAIL, permission denied"), "blocker")
         self.assertEqual(vf.classify_intent("All checks passed. Done."), "success")
@@ -47,6 +66,86 @@ class VoiceFeaturesTest(unittest.TestCase):
         self.assertEqual(len(first) % 2, 0)
         self.assertTrue(meta["repo_earcon"])
         self.assertEqual(meta["build_signal"], "tests_passed")
+
+    def test_diff_summary_uses_concepts(self):
+        self.assertEqual(vf.concept_for_path("daemon.py"), "voice daemon")
+        self.assertEqual(vf.concept_for_path("browser-extension/content.js"), "browser extension")
+
+    def test_request_intent_is_compact(self):
+        self.assertEqual(
+            vf.request_intent("Fix this, run smoke, but do not commit or push."),
+            "fix + test + do not commit + do not push",
+        )
+
+    def test_git_summary_ignores_unchanged_dirty_baseline(self):
+        before = {
+            "root": "/repo",
+            "head": "abc",
+            "branch": "feat",
+            "status": " M daemon.py",
+            "fingerprints": {},
+        }
+        outputs = {
+            ("rev-parse", "--show-toplevel"): "/repo",
+            ("rev-parse", "HEAD"): "abc",
+            ("status", "--porcelain=v1", "--untracked-files=all"): " M daemon.py",
+            ("branch", "--show-current"): "feat",
+        }
+        with mock.patch.object(vf, "_run_git", side_effect=lambda cwd, *args: outputs.get(args, "")):
+            result = vf.git_change_summary("/repo", before)
+        self.assertEqual(result["count"], 0)
+        self.assertTrue(result["verified"])
+
+    def test_claude_transcript_test_evidence(self):
+        started = datetime.fromisoformat("2026-07-13T08:30:00+00:00").timestamp()
+        evidence = vf.transcript_tool_evidence("test-fixtures/claude-transcript.jsonl", started_at=started)
+        self.assertEqual(evidence["verification"], "passed")
+        self.assertEqual(evidence["tests"], ["smoke"])
+
+    def test_codex_transcript_failed_evidence(self):
+        evidence = vf.transcript_tool_evidence("test-fixtures/codex-transcript.jsonl", turn_id="turn-new")
+        self.assertEqual(evidence["verification"], "failed")
+        self.assertEqual(evidence["tests"], ["unit tests"])
+
+    def test_git_branch_change_is_explicit(self):
+        before = {"root": "/repo", "head": "abc", "branch": "old", "status": "", "fingerprints": {}}
+        outputs = {
+            ("rev-parse", "--show-toplevel"): "/repo",
+            ("rev-parse", "HEAD"): "abc",
+            ("status", "--porcelain=v1", "--untracked-files=all"): "",
+            ("branch", "--show-current"): "new",
+        }
+        with mock.patch.object(vf, "_run_git", side_effect=lambda cwd, *args: outputs.get(args, "")):
+            result = vf.git_change_summary("/repo", before)
+        self.assertTrue(result["branch_changed"])
+        self.assertIn("switched from old to new", result["summary"].lower())
+
+    def test_contract_rejects_meta_speech(self):
+        spoken, meta = vf.enforce_spoken_contract(
+            "No action needed; just run git status again.",
+            "Updated daemon.py and controller.html. SMOKE PASS.",
+            "success",
+            16,
+            "Updated the voice daemon and controller.",
+        )
+        self.assertEqual(meta["contract"], "fallback")
+        self.assertNotIn("no action needed", spoken.lower())
+        self.assertIn("verification passed", spoken.lower())
+
+    def test_contract_exposes_untested_work(self):
+        spoken, meta = vf.enforce_spoken_contract(
+            "The controller is ready.",
+            "Updated the controller. Visual check was not run.",
+            "warning",
+            24,
+        )
+        self.assertEqual(meta["contract"], "fallback")
+        self.assertIn("not tested", spoken.lower())
+
+    def test_contract_uses_earcon_for_trivial_success(self):
+        spoken, meta = vf.enforce_spoken_contract("Done.", "Done.", "success", 16)
+        self.assertEqual(spoken, "")
+        self.assertEqual(meta["contract"], "earcon_only")
 
 
 if __name__ == "__main__":

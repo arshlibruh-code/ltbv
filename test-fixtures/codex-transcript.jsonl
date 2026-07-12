@@ -1,0 +1,3 @@
+{"timestamp":"2026-07-13T09:10:00Z","payload":{"type":"turn_context","turn_id":"turn-new","cwd":"/tmp/project"}}
+{"timestamp":"2026-07-13T09:10:01Z","payload":{"type":"function_call","call_id":"call-test","name":"exec_command","arguments":"{\"cmd\":\"python -m unittest\"}"}}
+{"timestamp":"2026-07-13T09:10:02Z","payload":{"type":"function_call_output","call_id":"call-test","output":"{\"output\":\"14 checks completed\",\"exit_code\":1}"}}
