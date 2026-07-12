@@ -158,7 +158,7 @@ esac
 
 check_platform
 
-if ! has uv; then
+if ! has uv && [ "${LTBV_SKIP_SYNC:-0}" != "1" ]; then
   [ "${LTBV_SKIP_UV_INSTALL:-0}" != "1" ] || fail "uv is missing and automatic installation is disabled."
   say "uv not found, installing it from Astral"
   curl -LsSf https://astral.sh/uv/install.sh | sh
