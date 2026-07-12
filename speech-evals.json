@@ -1,0 +1,65 @@
+{
+  "cases": [
+    {
+      "name": "reject meta chatter",
+      "source": "Updated daemon.py and controller.html. SMOKE PASS.",
+      "candidate": "No action needed; just run git status again.",
+      "intent": "success",
+      "budget": 16,
+      "diff_summary": "Updated the voice daemon and controller.",
+      "mode": "fallback",
+      "must_include": ["verification passed"],
+      "must_not_include": ["no action needed", "git status"]
+    },
+    {
+      "name": "surface failed verification",
+      "source": "Implementation finished. Smoke failed on hook speech.",
+      "candidate": "Everything passes and the feature is ready.",
+      "intent": "blocker",
+      "budget": 28,
+      "mode": "fallback",
+      "must_include": ["failed"],
+      "must_not_include": ["everything passes"]
+    },
+    {
+      "name": "surface missing visual check",
+      "source": "Updated the controller. Visual check was not run.",
+      "candidate": "The controller is ready.",
+      "intent": "warning",
+      "budget": 24,
+      "mode": "fallback",
+      "must_include": ["not tested"],
+      "must_not_include": []
+    },
+    {
+      "name": "ask exact decision",
+      "source": "Choose tabs or a scrolling layout before I continue.",
+      "candidate": "Let me know what you think.",
+      "intent": "needs_input",
+      "budget": 20,
+      "mode": "fallback",
+      "must_include": ["choose tabs or a scrolling layout"],
+      "must_not_include": ["let me know"]
+    },
+    {
+      "name": "accept concise verified result",
+      "source": "Browser ducking was fixed. All checks passed.",
+      "candidate": "Browser ducking is fixed and all checks passed.",
+      "intent": "success",
+      "budget": 16,
+      "mode": "accepted",
+      "must_include": ["all checks passed"],
+      "must_not_include": []
+    },
+    {
+      "name": "trivial success becomes sound",
+      "source": "Done.",
+      "candidate": "Done.",
+      "intent": "success",
+      "budget": 16,
+      "mode": "earcon_only",
+      "must_include": [],
+      "must_not_include": []
+    }
+  ]
+}

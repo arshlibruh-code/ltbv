@@ -1,0 +1,4 @@
+{"type":"assistant","timestamp":"2026-07-13T08:00:00Z","message":{"content":[{"type":"tool_use","id":"old-test","name":"Bash","input":{"command":"./smoke.sh"}}]}}
+{"type":"user","timestamp":"2026-07-13T08:00:01Z","message":{"content":[{"type":"tool_result","tool_use_id":"old-test","is_error":true,"content":"SMOKE FAIL"}]}}
+{"type":"assistant","timestamp":"2026-07-13T09:00:00Z","message":{"content":[{"type":"tool_use","id":"new-test","name":"Bash","input":{"command":"./smoke.sh"}}]}}
+{"type":"user","timestamp":"2026-07-13T09:00:02Z","message":{"content":[{"type":"tool_result","tool_use_id":"new-test","is_error":false,"content":"SMOKE PASS"}]}}

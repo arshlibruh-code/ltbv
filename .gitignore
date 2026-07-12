@@ -8,4 +8,6 @@ __pycache__/
 config.json
 bench/
 .clips/
+.turns.json
+.timeline.json
 voices/

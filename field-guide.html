@@ -553,7 +553,8 @@
         </div>
         <div class="grid cols-3">
           <div class="card pad metric"><b>Short replies</b><span>These can be spoken almost directly, so the answer stays crisp and human.</span></div>
-          <div class="card pad metric"><b>Long replies</b><span>These get condensed into a short spoken summary, so the speaker does not ramble through dense prose. A local model can handle this entirely on your machine, or a network model can, your call.</span></div>
+          <div class="card pad metric"><b>Long replies</b><span>These get condensed into a short spoken summary by local Ollama, so the speaker does not ramble through dense prose. Set the provider to <code>none</code> for the deterministic fallback.</span></div>
+          <div class="card pad metric"><b>Behavior and history</b><span>Attributable diffs become behavioral facts, while a compact local timeline connects earlier failures to later fixes. It stores outcomes and evidence, never prompt, reply, or source text.</span></div>
           <div class="card pad metric"><b>Tables</b><span>A reply with a table is never read row by row. The full reply goes to the condenser first, and the voice speaks the short table summary. If that fails, it simply tells you to look.</span></div>
         </div>
       </section>
@@ -571,7 +572,9 @@
             <div class="step"><b>The mixing desk</b><span>Drag a line across a chart of your past replies to set how long an answer can be before it gets summarized. You aim it by eye against real data.</span></div>
             <div class="step"><b>Media ducking</b><span>If enabled, Spotify and Browser YouTube can fade down only while TTS is actually playing, then return to their previous levels.</span></div>
             <div class="step"><b>The shootout</b><span>Compare installed TTS engines on the same sentence, replay each clip, run blind A/B, and keep the winner without the page making decisions for you.</span></div>
-            <div class="step"><b>The ledger</b><span>Every reply is a dot on a timeline, one lane per project. Click any dot to hear it again.</span></div>
+            <div class="step"><b>The ledger</b><span>Every reply is a dot on a timeline, one lane per project. Click any dot to hear it again. Several projects finishing together can collapse into one spoken radio bulletin.</span></div>
+            <div class="step"><b>Attention cues</b><span>Short repo and intent sounds tell you where a line came from and whether it is a success, warning, blocker, or request. The spoken summary stays brief.</span></div>
+            <div class="step"><b>Backchannel</b><span>Repeat, slow down, speed up, or switch to brief mode from the controller or CLI.</span></div>
           </div>
           <div class="state">
             <h3>Why it exists</h3>

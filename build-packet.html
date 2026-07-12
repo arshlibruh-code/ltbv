@@ -290,10 +290,10 @@
             <tbody>
               <tr><td>TTS engine</td><td>Pocket TTS default, Kokoro-82M optional</td><td>Engines sit behind a lazy <code>load / voices / synth</code> registry. Pocket remains the live default. Kokoro exposes <span class="num">54</span> voices and joins the controller shootout. Warm bench: Pocket RTF <span class="num">0.160</span>, Kokoro RTF <span class="num">0.096</span>.</td></tr>
               <tr><td>Length limit</td><td>None from the engine</td><td>Generation is chunk-streamed, so time scales linearly with text and memory stays flat. Arbitrarily long input works; the <span class="num">400</span>-char condense cap is our taste policy, not a Pocket limit.</td></tr>
-              <tr><td>Condense</td><td>deepseek / ollama / none, switchable live</td><td>DeepSeek is the network path (Anthropic-compatible endpoint, one call). Ollama (2026-07-10) runs <code>qwen3.5:4b</code> locally at <span class="num">11434</span>, streamed, thinking disabled: ~<span class="num">3s</span> versus DeepSeek's <span class="num">20-30s</span> and its recurring timeouts. Table replies send the raw full response either way so the model can summarize the table instead of losing it. <code>condense_prompt</code> is the only tone knob; the old clean/natural/radio style layer was removed 2026-07-10.</td></tr>
-              <tr><td>Playback</td><td>ffplay (<code>atempo</code>) or afplay</td><td>ffplay preferred for pitch-preserving rate; afplay fallback. Optional Spotify and Browser YouTube ducking can fade media down during actual TTS playback, then restore the saved level when playback finishes or is stopped.</td></tr>
+              <tr><td>Condense</td><td>ollama / none, switchable live</td><td>Ollama runs <code>qwen3.5:4b</code> locally at <span class="num">11434</span>, streamed with thinking disabled. Table replies send the full redacted response locally so the model can summarize the table instead of losing it. <code>condense_prompt</code> is the only tone knob.</td></tr>
+              <tr><td>Playback</td><td>ffplay (<code>atempo</code>) or afplay</td><td>ffplay preferred for pitch-preserving rate; afplay fallback. Procedural repo, intent, and build cues are embedded into the same WAV. Optional Spotify and Browser YouTube ducking can fade media down during actual TTS playback, then restore the saved level when playback finishes or is stopped.</td></tr>
               <tr><td>Runtime</td><td>Python <span class="num">3.11</span> stdlib + PyTorch</td><td>Daemon is stdlib-only (HTTP, threads, queue, SSE). PyTorch rides in under Pocket. No web framework.</td></tr>
-              <tr><td>Runs local</td><td>Everything, condense included if set to Ollama</td><td>Synthesis, playback, cloning, config, the controller: always on-device. Condense only leaves the machine if <code>condense_provider</code> is set to <code>deepseek</code>; <code>ollama</code> and <code>none</code> are fully local.</td></tr>
+              <tr><td>Runs local</td><td>Everything</td><td>Synthesis, playback, cloning, config, controller, intent capture, Git evidence, transcript evidence, and condensing stay on-device.</td></tr>
             </tbody>
           </table>
         </div>
@@ -307,7 +307,7 @@
             <tbody>
               <tr><td>Product</td><td>Speak the final response of every Codex and Claude Code turn, automatically, via hooks. No wrapper command, agents run as normal.</td><td><span class="tag">Shipped</span></td></tr>
               <tr><td>User flow</td><td>Zero. Hooks fire on their own. New input kills speech instantly, scoped to the project you typed in.</td><td><span class="tag">Shipped</span></td></tr>
-              <tr><td>Privacy</td><td>All synthesis and audio local, always. Condense is local too when set to Ollama; the DeepSeek path (still the default) sends long responses and table replies over the network.</td><td><span class="tag yellow">1 asterisk, opt-out</span></td></tr>
+              <tr><td>Privacy</td><td>Everything stays local. User prompts are redacted and ephemeral; only compact intent metadata persists for restart recovery.</td><td><span class="tag">Local</span></td></tr>
               <tr><td>Latency</td><td>Warm first-audio under <span class="num">1s</span>. Hook exits within <span class="num">~100ms</span>. Measured: <span class="num">0.05s</span> warm first-audio on Pocket.</td><td><span class="tag">Passed</span></td></tr>
               <tr><td>Voice in</td><td>Not built. Hex (<code>com.kitlangton.Hex</code>, Parakeet STT) already covers it. This tool is one-way: agent to speaker.</td><td><span class="tag red">Non-goal</span></td></tr>
               <tr><td>Non-goals</td><td>No PTY wrapper, no UI beyond the controller, no voice cloning by default, no native app packaging, no framework, no support for agents I don't use.</td><td><span class="tag red">Avoid</span></td></tr>
@@ -331,10 +331,10 @@
         <div class="section-head"><span class="idx">04</span><h2>Speech Policy</h2><p>Where all the taste lives.</p></div>
         <div class="card">
           <div class="filter-row"><b>Speak</b><span>Final assistant prose under <span class="num">400</span> chars (live, tunable from the controller), after markdown strip.</span><span class="tag">Yes</span></div>
-          <div class="filter-row"><b>Never speak</b><span>Code, diffs, stack traces, raw file paths, URLs verbatim. Markdown tables are never read row by row; the raw reply goes to the summarizer for a conversational table summary.</span><span class="tag red">No</span></div>
-          <div class="filter-row"><b>Condense</b><span>Over the threshold, or whenever a table appears: a natural spoken summary via the active <code>condense_provider</code> (deepseek / ollama / none), called by the daemon, never the hook. Tone comes entirely from <code>condense_prompt</code>. Provider fails: speak the first sentence or invite the user to inspect the table.</span><span class="tag yellow">AI</span></div>
-          <div class="filter-row"><b>Interrupt</b><span><code>UserPromptSubmit</code> in either CLI posts <code>/stop</code> with its cwd. Only the typing project goes quiet; another project mid-sentence keeps talking.</span><span class="tag blue">Required</span></div>
-          <div class="filter-row"><b>Queue</b><span>Per-project pending map, newest per project wins, notifications queue-jump. Concurrent projects no longer swallow each other.</span><span class="tag blue">Simple</span></div>
+          <div class="filter-row"><b>Never speak</b><span>Code, diffs, stack traces, raw file paths, URLs verbatim, or obvious secrets. Markdown tables are never read row by row; the raw reply goes to the summarizer for a conversational table summary.</span><span class="tag red">No</span></div>
+          <div class="filter-row"><b>Condense</b><span>Over the threshold, or whenever a table appears: a local spoken summary via Ollama, or deterministic fallback when set to <code>none</code>. Tone comes entirely from <code>condense_prompt</code>.</span><span class="tag yellow">AI</span></div>
+          <div class="filter-row"><b>Interrupt</b><span><code>UserPromptSubmit</code> in either CLI posts <code>/turn/start</code> with session and turn identity. The daemon acknowledges immediately, snapshots Git asynchronously, and only silences the typing project.</span><span class="tag blue">Required</span></div>
+          <div class="filter-row"><b>Queue</b><span>Pending replies are keyed by project, session, and turn. Parallel agents inside one repo remain distinct, while notifications still queue-jump.</span><span class="tag blue">Simple</span></div>
           <div class="filter-row"><b>Prefix</b><span>When more than one project has spoken inside <span class="num">10</span> min, replies get a rotating spoken prefix: In X / From X / Update from X. Solo work stays unprefixed.</span><span class="tag">Live</span></div>
         </div>
       </section>
@@ -350,9 +350,9 @@
               <tr><td>Never speak code</td><td>No code, diffs, stack traces, or raw paths, under any condition.</td></tr>
               <tr><td>Instant interrupt</td><td>New user input kills current speech immediately, scoped to the project it came from.</td></tr>
               <tr><td>SHUT UP</td><td><code>.voice-disabled</code> in the repo root blocks wake-up and speech before anything else runs. Delete it to re-enable, no restart.</td></tr>
-              <tr><td>Local, one asterisk</td><td>Everything runs on-device by default (<code>condense_provider</code> defaults to <code>ollama</code>). The asterisk only reappears if it's switched to <code>deepseek</code>.</td></tr>
+              <tr><td>Local only</td><td>Everything runs on-device. Condensing supports Ollama or deterministic <code>none</code>.</td></tr>
               <tr><td>Stay small</td><td>No framework or native app packaging, no tests beyond the bench script. A handful of files. Personal tool, not a product. Amended 2026-07-06: "no config UI" fell deliberately; <code>controller.html</code> is the sanctioned tuning surface, served by the daemon. It is a remote, not a brain: all behavior stays in <code>daemon.py</code>.</td></tr>
-              <tr><td>Secrets</td><td>The current summarizer token is read at runtime from <code>~/.claude/settings.deepseek.json</code>. Never stored or committed in this repo.</td></tr>
+              <tr><td>Secrets</td><td>Known secret shapes are redacted before speech processing. No cloud token is required.</td></tr>
             </tbody>
           </table>
         </div>
@@ -506,7 +506,7 @@ command = "$REPO/.venv/bin/python $REPO/hook.py"</pre>
             <tbody>
               <tr><td>Capture method</td><td>Hooks only, no PTY fallback</td><td>Both CLIs ship <code>last_assistant_message</code> in the Stop payload. PTY-era rationale is dead.</td></tr>
               <tr><td>Agent order</td><td>Claude Code first, Codex second</td><td>Older hook system, known-working examples. Codex is a config paste after.</td></tr>
-              <tr><td>Long responses</td><td>Configured summarizer condense, DeepSeek by default, in the daemon</td><td>Credits already there, Anthropic-compatible endpoint, token in <code>settings.deepseek.json</code>. Moved out of the hook after Codex review (2026-07-05): network in the hook breaks the <span class="num">100ms</span> invariant.</td></tr>
+              <tr><td>Long responses</td><td>Local Ollama condense in the daemon</td><td>Network work never enters the hook. Setting the provider to <code>none</code> uses the deterministic fallback.</td></tr>
               <tr><td>Bench order</td><td>Pocket, Kokoro, Supertonic</td><td>Revised 2026-07-06: Kokoro first after the abstraction, then Supertonic only after the Kokoro shootout works end to end.</td></tr>
               <tr><td>Voice</td><td>Stock preset, calm, slightly fast</td><td>Simplest first. Cloning and variants later, maybe never.</td></tr>
               <tr><td>Daemon lifecycle</td><td>Spawn-on-first-hook, <span class="num">10</span> min idle exit</td><td>A local developer machine may already be running agents and a browser. No forever-resident model.</td></tr>
@@ -521,7 +521,7 @@ command = "$REPO/.venv/bin/python $REPO/hook.py"</pre>
               <tr><td>Voice</td><td>Catalog voices + per-agent assignment; cloning plumbing built, gated</td><td>The <span class="num">26</span>-voice catalog ships now. Cloning (drop-a-wav / record-in-browser) works end to end but needs the gated HF weights, so it degrades to an actionable setup message until the one-time auth step is done.</td></tr>
               <tr><td>Playback engine</td><td>ffplay atempo, play on synthesis-complete (2026-07-06)</td><td>ffplay <code>atempo</code> changes speed without pitch-shifting (afplay <code>-r</code> shifts). True mid-synthesis PCM streaming was cut: ffplay's pipe exits early once buffered and truncates audio, and the latency win was marginal because condensing keeps replies short.</td></tr>
               <tr><td>Live UI</td><td>SSE stream, not polling (controller v2)</td><td>One stdlib <code>text/event-stream</code> faucet pushes speak / now / wave events; the browser's <code>EventSource</code> auto-reconnects. Replaced the <span class="num">5s</span> poll so blips and the waveform land instantly.</td></tr>
-              <tr><td>Local condense</td><td>Ollama added as a provider, <code>qwen3.5:4b</code> (2026-07-10)</td><td>DeepSeek kept timing out repeatedly in the field (20-30s, no response). Ollama runs locally at <span class="num">11434</span>, streamed, thinking disabled: ~<span class="num">3s</span> and zero network dependency. Model picked for fitting a 16GB M3 next to a resident Pocket TTS model; four stale Ollama models (qwen3-vl, qwen2.5-coder, qwen3:8b, llama3.2) were removed to make room. Ollama is now the code default; DeepSeek and <code>none</code> are opt-in.</td></tr>
+              <tr><td>Local condense</td><td>Ollama with <code>qwen3.5:4b</code>, or <code>none</code></td><td>Ollama runs locally at <span class="num">11434</span>, streamed with thinking disabled. The default model fits alongside Pocket TTS on the target Mac.</td></tr>
               <tr><td>Personality prompt</td><td><code>condense_prompt</code> is the sole tone knob (2026-07-10)</td><td>The clean/natural/radio <code>speech_style</code> layer was removed: it was a second, redundant tone control sitting on top of the prompt and diluting it. Whatever the user writes into <code>condense_prompt</code> now reaches the model unmodified.</td></tr>
               <tr><td>Daemon restart</td><td><code>POST /restart</code> self-respawn (2026-07-10)</td><td>Editing <code>daemon.py</code> mid-session required a manual <code>pkill</code> + relaunch to pick up code changes; SHUT UP does not restart the process, it only blocks speech. The endpoint spawns a detached delayed relauncher, then hard-exits, so the port is free before the new process binds it.</td></tr>
             </tbody>
@@ -665,7 +665,7 @@ TASKS, in order:
 
 5. Condense fallback: when the summarizer fails, speak first_sentence(text)
    prefixed with a short note ("Summary failed, first line:") instead of
-   DEEPSEEK_FAILED_TEXT which loses the content. first_sentence already
+   the old failure constant which loses the content. first_sentence already
    exists in daemon.py, currently unused.
 
 6. Cold-boot retry: in hook.py, if the /speak POST fails, retry once after
@@ -701,7 +701,7 @@ no build step, no external assets. Plain fetch, no SSE, no websockets.
 Daemon side, stdlib only:
 - GET / returns controller.html from disk.
 - GET /config and POST /config: MAX_DIRECT_CHARS, IDLE_EXIT_S,
-  PROJECT_WINDOW_S, DEEPSEEK_TIMEOUT_S, afplay rate + volume, and per-agent
+  PROJECT_WINDOW_S, CONDENSE_TIMEOUT_S, afplay rate + volume, and per-agent
   voice assignments become defaults overridden by config.json in the repo
   root, hot-applied on POST, no restart. afplay rate/volume apply via
   afplay -r / -v at play time.

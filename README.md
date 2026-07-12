@@ -25,6 +25,22 @@ For a health check:
 ~/.local/bin/ltbv doctor
 ```
 
+Everything stays local. Ollama condenses long replies; `none` keeps the deterministic fallback. Prompt text is redacted and ephemeral, while only compact intent and turn evidence survive daemon restarts.
+
+### Pronunciation
+
+Create `.ltbv/pronounce.json` in a repo when names need help:
+
+```json
+{
+  "WebGPU": "Web G P U",
+  "ltbv": "let there be voice"
+}
+```
+
+Speech also gets short repo and intent sounds, adaptive brevity, and obvious-secret redaction before condensation.
+Attributable diffs become behavioral facts instead of filename lists. A local structured timeline connects failures, fixes, and passing verification across turns without storing prompt or reply text.
+
 ## Controller
 
 Wake the daemon and open the controller:
@@ -40,9 +56,15 @@ The daemon serves the controller automatically at `http://127.0.0.1:7333/`.
 
 | Command | Action |
 |---|---|
+| `./voice wake` | Start the daemon quietly |
 | `./voice status` | Check daemon status |
+| `./voice doctor` | Check the complete local loop |
 | `./voice say "hello"` | Speak a line |
 | `./voice chill` | Stop the current line |
+| `./voice repeat` | Repeat the last line |
+| `./voice recap` | Speak the recent structured work arc |
+| `./voice slower` / `faster` | Replay at a different rate |
+| `./voice brief` / `normal` | Toggle adaptive brevity |
 | `./voice shutup` | Block future speech |
 | `./voice unshutup` | Re-enable speech |
 | `./smoke.sh` | Run full end-to-end verification |
