@@ -14,6 +14,7 @@ Repo-local notes for Claude and Codex.
 - `config.json`: runtime config, written by the controller, untracked. Delete it to reset to defaults.
 - `smoke.sh`: end-to-end confidence suite. Run before committing daemon or hook changes.
 - `voice`: CLI helper. `./voice status|chill|shutup|unshutup|say "text"`.
+- `install.sh`: relocatable macOS installer for the daemon and Claude/Codex hooks.
 - `bench_tts.py`: Pocket TTS bench script.
 - `build-packet.html`: implementation packet and source of truth.
 - `field-guide.html`: narrative guide for how the system behaves.
@@ -30,6 +31,7 @@ Repo-local notes for Claude and Codex.
 - Quiet hours (`quiet_hours` in config) accept speech but keep silent, logged as `quiet_skip`.
 - Empty `last_assistant_message` falls back to parsing `transcript_path`.
 - Playback via `afplay` honoring `rate` and `volume` config. The daemon exits after `idle_exit_s` idle.
+- Optional ducking targets Spotify and Browser/YouTube independently. Browser/YouTube is controlled by the companion Chromium extension through `GET /browser/duck`.
 - Errors land in `.voice.log` as `event: "error"`. The log self-caps around 500 lines.
 
 ## Endpoints

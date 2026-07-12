@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "ltbv browser duck",
+  "version": "0.1.0",
+  "description": "Ducks YouTube media while let-there-be-voice speaks.",
+  "permissions": [],
+  "host_permissions": [
+    "http://127.0.0.1:7333/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://youtube.com/*",
+        "https://*.youtube.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

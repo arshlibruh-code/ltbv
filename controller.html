@@ -298,7 +298,8 @@
             <div class="scrubs" id="scrubs"></div>
             <div class="row-actions">
               <button class="btn toggle" id="duck-toggle">spotify duck off</button>
-              <span class="hint">fade Spotify during speech, restore after</span>
+              <button class="btn toggle" id="browser-duck-toggle">browser / youtube duck off</button>
+              <span class="hint">fade media during speech, restore after</span>
             </div>
             <div class="quiet">
               <div class="cap">
@@ -687,6 +688,8 @@
       if (!cfg) return;
       $("duck-toggle").classList.toggle("on", !!cfg.ducking_enabled);
       $("duck-toggle").textContent = cfg.ducking_enabled ? "spotify duck on" : "spotify duck off";
+      $("browser-duck-toggle").classList.toggle("on", !!cfg.browser_youtube_ducking_enabled);
+      $("browser-duck-toggle").textContent = cfg.browser_youtube_ducking_enabled ? "browser / youtube duck on" : "browser / youtube duck off";
     }
     function attachScrub(el, k) {
       let x0 = 0, v0 = 0, live = null, moved = false, pid = null;
@@ -1073,6 +1076,11 @@
       cfg.ducking_enabled = !cfg.ducking_enabled;
       renderDucking();
       pushConfig({ ducking_enabled: cfg.ducking_enabled }, "saved-desk", "err-desk");
+    };
+    $("browser-duck-toggle").onclick = () => {
+      cfg.browser_youtube_ducking_enabled = !cfg.browser_youtube_ducking_enabled;
+      renderDucking();
+      pushConfig({ browser_youtube_ducking_enabled: cfg.browser_youtube_ducking_enabled }, "saved-desk", "err-desk");
     };
     $("recondense").onclick = async () => {
       $("recondense").disabled = true;

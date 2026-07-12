@@ -294,6 +294,8 @@ CONFIG_SPEC = {
     "volume": {"default": 1.0, "kind": "float", "min": 0.0, "max": 1.0},
     "temperature": {"default": 0.7, "kind": "float", "min": 0.1, "max": 1.5},
     "ducking_enabled": {"default": False, "kind": "bool"},
+    "browser_youtube_ducking_enabled": {"default": False, "kind": "bool"},
+    "browser_youtube_duck_target_volume": {"default": 15, "kind": "int", "min": 0, "max": 100},
     "duck_target_volume": {"default": 25, "kind": "int", "min": 0, "max": 100},
     "duck_fade_ms": {"default": 400, "kind": "int", "min": 0, "max": 3000},
     "duck_restore_delay_ms": {"default": 150, "kind": "int", "min": 0, "max": 3000},
@@ -342,7 +344,10 @@ prefix_counter = 0
 clip_ring = OrderedDict()
 
 config = {key: spec["default"] for key, spec in CONFIG_SPEC.items()}
-duck_state = {"did_duck": False, "saved_volume": None}
+duck_state = {
+    "spotify": {"did_duck": False, "saved_volume": None},
+    "browser_youtube": {"active": False, "generation": 0},
+}
 duck_lock = threading.Lock()
 
 
@@ -914,6 +919,25 @@ def spotify_script(script: str) -> str | None:
         return None
 
 
+def browser_duck_set(active: bool) -> int:
+    with duck_lock:
+        state = duck_state["browser_youtube"]
+        state["active"] = bool(active)
+        if active:
+            state["generation"] += 1
+        return int(state["generation"])
+
+
+def browser_duck_snapshot() -> dict:
+    with duck_lock:
+        state = duck_state["browser_youtube"]
+        return {
+            "active": bool(state["active"]),
+            "generation": int(state["generation"]),
+            "target": int(config["browser_youtube_duck_target_volume"]) / 100,
+        }
+
+
 def spotify_running() -> bool:
     return spotify_script('application "Spotify" is running') == "true"
 
@@ -942,30 +966,28 @@ def fade_spotify_volume(start: int, end: int, fade_ms: int) -> None:
             time.sleep(delay)
 
 
-def duck_on() -> None:
-    if not config.get("ducking_enabled"):
-        return
+def spotify_duck_on() -> None:
     with duck_lock:
-        duck_state["did_duck"] = False
-        duck_state["saved_volume"] = None
+        duck_state["spotify"]["did_duck"] = False
+        duck_state["spotify"]["saved_volume"] = None
         if not spotify_running():
             return
         current = spotify_volume()
         if current is None:
             return
         target = int(config["duck_target_volume"])
-        duck_state["saved_volume"] = current
-        duck_state["did_duck"] = True
+        duck_state["spotify"]["saved_volume"] = current
+        duck_state["spotify"]["did_duck"] = True
     fade_spotify_volume(current, target, int(config["duck_fade_ms"]))
     append_log("duck_on", app="Spotify", from_volume=current, to_volume=target)
 
 
-def duck_off() -> None:
+def spotify_duck_off() -> None:
     with duck_lock:
-        did_duck = bool(duck_state["did_duck"])
-        saved = duck_state["saved_volume"]
-        duck_state["did_duck"] = False
-        duck_state["saved_volume"] = None
+        did_duck = bool(duck_state["spotify"]["did_duck"])
+        saved = duck_state["spotify"]["saved_volume"]
+        duck_state["spotify"]["did_duck"] = False
+        duck_state["spotify"]["saved_volume"] = None
     if not did_duck or saved is None:
         return
     delay = int(config["duck_restore_delay_ms"]) / 1000
@@ -978,6 +1000,34 @@ def duck_off() -> None:
         return
     fade_spotify_volume(current, int(saved), int(config["duck_fade_ms"]))
     append_log("duck_off", app="Spotify", from_volume=current, to_volume=int(saved))
+
+
+def browser_duck_on() -> None:
+    if not config.get("browser_youtube_ducking_enabled"):
+        return
+    generation = browser_duck_set(True)
+    append_log(
+        "duck_on",
+        app="Browser/YouTube",
+        generation=generation,
+        to_volume=int(config["browser_youtube_duck_target_volume"]),
+    )
+
+
+def browser_duck_off() -> None:
+    generation = browser_duck_set(False)
+    append_log("duck_off", app="Browser/YouTube", generation=generation)
+
+
+def duck_on() -> None:
+    if config.get("ducking_enabled"):
+        spotify_duck_on()
+    browser_duck_on()
+
+
+def duck_off() -> None:
+    spotify_duck_off()
+    browser_duck_off()
 
 
 def ring_put(clip_id: str, path: Path) -> None:
@@ -1475,6 +1525,11 @@ class Handler(BaseHTTPRequestHandler):
                         "muted": muted(),
                     },
                 )
+                return
+            if route == "/browser/duck":
+                state = browser_duck_snapshot()
+                state["enabled"] = bool(config.get("browser_youtube_ducking_enabled"))
+                json_response(self, 200, {"ok": True, **state})
                 return
             if route == "/events":
                 sub = queue.Queue(maxsize=200)
