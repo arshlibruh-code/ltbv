@@ -122,6 +122,7 @@
       white-space: nowrap;
     }
     .packet-link:hover { color: var(--title); border-color: var(--accent-2); }
+    .doc-links { display: flex; gap: 6px; justify-self: end; }
 
     .groups {
       display: grid;
@@ -379,7 +380,7 @@
       .shell { padding: 18px 14px 18px; }
       .brand { grid-template-columns: 1fr; }
       .mark { margin-top: 0; }
-      .packet-link { justify-self: start; }
+      .doc-links { justify-self: start; }
       .groups { grid-template-columns: 1fr 1fr; }
       .flow { grid-template-columns: 1fr; }
       .node::after { display: none; }
@@ -395,7 +396,7 @@
           <h1>let-there-be-voice</h1>
           <p>field guide / boot to speech to silence</p>
         </div>
-        <a class="packet-link" href="build-packet.html">full technical packet &rarr;</a>
+        <div class="doc-links"><a class="packet-link" href="install.html">install</a><a class="packet-link" href="build-packet.html">technical packet &rarr;</a></div>
       </div>
       <div class="groups">
         <div class="group">

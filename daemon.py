@@ -1351,6 +1351,10 @@ def pcm_peak(pcm: bytes) -> float:
     return max(abs(s) for s in samples) / 32767
 
 
+def media_should_duck(pcm_frames: list[bytes]) -> bool:
+    return float(config.get("volume", 1.0)) > 0 and any(pcm_peak(frame) > 0 for frame in pcm_frames)
+
+
 def speak(
     text: str,
     gen: int,
@@ -1406,7 +1410,11 @@ def speak(
     with state_lock:
         if is_stale(key, gen):
             return None
-    duck_on()
+    media_ducked = media_should_duck(pcm_frames)
+    if media_ducked:
+        duck_on()
+    else:
+        append_log("duck_skip", reason="inaudible")
     stale_after_duck = False
     try:
         with state_lock:
@@ -1428,10 +1436,10 @@ def speak(
                 }
     except Exception:
         log_error("player")
-        _finish(None)
+        _finish(None, media_ducked)
         return None
     if stale_after_duck:
-        _finish(None)
+        _finish(None, media_ducked)
         return None
     publish({"event": "now", "on": True, **now_speaking})
     publish(
@@ -1442,11 +1450,11 @@ def speak(
             "clip": clip_id,
         }
     )
-    _finish(proc)
+    _finish(proc, media_ducked)
     return clip_id
 
 
-def _finish(proc) -> None:
+def _finish(proc, restore_media: bool = True) -> None:
     global active_player, active_cwd, active_cwds, now_speaking
     try:
         if proc and proc.stdin:
@@ -1457,7 +1465,8 @@ def _finish(proc) -> None:
         if proc:
             proc.wait()
     finally:
-        duck_off()
+        if restore_media:
+            duck_off()
         with state_lock:
             if active_player is proc:
                 active_player = None

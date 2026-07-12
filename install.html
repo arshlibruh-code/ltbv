@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ltbv · Install</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><polygon points='32,25 12,42 2,42 2,58 12,58 32,75' fill='%23e8e8e8'/><path d='M50,32 Q68,50 50,68' fill='none' stroke='%23e8e8e8' stroke-width='7' stroke-linecap='round'/><path d='M62,20 Q85,50 62,80' fill='none' stroke='%23e8e8e8' stroke-width='6' stroke-linecap='round'/></svg>">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1419;
+      --panel: #171d24;
+      --panel-2: #1b2128;
+      --line: #313740;
+      --soft: #262c34;
+      --text: #e6ddd1;
+      --muted: #b0a89c;
+      --faint: #7d857f;
+      --amber: #c9c1b4;
+      --cyan: #8f9890;
+      --green: #a9bda9;
+      --mono: "Share Tech Mono", ui-monospace, Menlo, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; border-radius: 0 !important; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.06), transparent 38%),
+        radial-gradient(circle at center, rgba(255, 255, 255, 0.03), transparent 55%),
+        linear-gradient(180deg, #11161c 0%, #0d1116 100%);
+      color: var(--text);
+      font: 13px/1.42 var(--sans);
+    }
+    a { color: inherit; text-decoration: none; }
+    code, pre, .mono, .num { font-family: var(--mono); }
+    .shell { max-width: 900px; margin: 0 auto; padding: 28px 24px 60px; position: relative; }
+    .shell::before, .shell::after { content: "+"; position: fixed; top: 18px; color: #8f948c; font: 20px/1 var(--mono); opacity: .72; pointer-events: none; }
+    .shell::before { left: 22px; }
+    .shell::after { right: 22px; }
+    .top {
+      display: flex; align-items: center; justify-content: space-between; gap: 18px;
+      padding: 0 0 14px; border-bottom: 1px solid var(--line);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .mark { width: 20px; height: 20px; border: 1px solid var(--amber); transform: rotate(45deg); }
+    .brand b { display: block; letter-spacing: .13em; text-transform: uppercase; font-size: 12px; }
+    .brand span { display: block; color: var(--faint); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .1em; }
+    .nav { display: flex; gap: 5px; flex-wrap: wrap; }
+    .nav a { padding: 6px 9px; border: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+    .nav a[aria-current="page"] { color: var(--text); border-color: var(--amber); }
+    .hero { padding: 46px 0 28px; border-bottom: 1px solid var(--line); }
+    .hero-banner { display: block; width: min(190px, 52%); height: auto; margin: 0 0 24px; opacity: .9; }
+    h1 { margin: 0 0 8px; font-size: 32px; line-height: 1.05; letter-spacing: -.025em; }
+    .lede { margin: 0; max-width: 560px; color: var(--muted); font-size: 14px; }
+    .section { margin-top: 28px; }
+    .section-head { padding: 0 0 8px; }
+    .section-head h2 { margin: 0; font-size: 14px; }
+    .command { position: relative; border: 1px solid var(--line); background: #0d1116; padding: 18px 92px 18px 18px; overflow: auto; }
+    .command code { color: var(--text); white-space: pre; font-size: 13px; }
+    .copy { position: absolute; top: 9px; right: 9px; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); padding: 7px 10px; cursor: pointer; font: 10px var(--mono); text-transform: uppercase; }
+    .copy:hover, .copy:focus { color: var(--text); border-color: var(--amber); outline: none; }
+    .rows { border: 1px solid var(--line); }
+    .row { display: grid; grid-template-columns: 180px 1fr; gap: 16px; padding: 11px 13px; border-bottom: 1px solid var(--soft); }
+    .row:last-child { border: 0; }
+    .row b { font: 11px var(--mono); color: var(--cyan); }
+    .row span { color: var(--muted); font-size: 12px; }
+    .ok { color: var(--green) !important; }
+    .note { border-left: 2px solid var(--amber); background: var(--panel); padding: 12px 14px; color: var(--muted); }
+    footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; color: var(--faint); font: 10px var(--mono); }
+    @media (max-width: 760px) {
+      .shell { padding: 14px; }
+      .top, footer { align-items: flex-start; flex-direction: column; }
+      .row { grid-template-columns: 1fr; gap: 4px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="top">
+      <a class="brand" href="index.html"><span class="mark" aria-hidden="true"></span><span><b>let-there-be-voice</b><span>local voice for coding agents</span></span></a>
+      <nav class="nav" aria-label="Documentation">
+        <a href="install.html" aria-current="page">Install</a>
+        <a href="field-guide.html">Field Guide</a>
+        <a href="build-packet.html">Build Packet</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <img class="hero-banner" src="assets/ltbv-banner.png" alt="ltbv banner">
+      <h1>Install ltbv</h1>
+      <p class="lede">Local speech for Claude Code and Codex on macOS.</p>
+    </section>
+
+    <section class="section" id="install">
+      <div class="section-head"><h2>Install</h2></div>
+      <div class="command"><code>curl -fsSL https://raw.githubusercontent.com/arshlibruh-code/ltbv/main/install.sh | bash</code><button class="copy" type="button">copy</button></div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Verify</h2></div>
+      <div class="command"><code>ltbv doctor
+ltbv open</code><button class="copy" type="button">copy</button></div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>What the installer changes</h2></div>
+      <div class="rows">
+        <div class="row"><b>~/.local/share/ltbv</b><span>Application checkout and locked Python environment.</span></div>
+        <div class="row"><b>~/.local/bin/ltbv</b><span>Command for opening, checking, updating, and removing ltbv.</span></div>
+        <div class="row"><b>Claude + Codex</b><span>Adds managed hooks and preserves unrelated configuration.</span></div>
+        <div class="row"><b>settings backups</b><span>Written beside the original files before hook changes.</span></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Optional</h2></div>
+      <div class="rows">
+        <div class="row"><b>Ollama</b><span>Condenses long replies locally. Without it, ltbv uses deterministic fallback speech.</span></div>
+        <div class="row"><b>Browser audio</b><span>Load <code>~/.local/share/ltbv/browser-extension</code> as an unpacked Arc or Chrome extension for YouTube ducking.</span></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Manage</h2></div>
+      <div class="command"><code>ltbv update
+ltbv uninstall</code><button class="copy" type="button">copy</button></div>
+      <div class="rows" style="margin-top:8px">
+        <div class="row"><b>update</b><span>Fast-forwards the installed checkout and reapplies managed hooks.</span></div>
+        <div class="row"><b>uninstall</b><span>Removes ltbv and its managed hook entries. Settings backups are retained.</span></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Troubleshooting</h2></div>
+      <div class="rows">
+        <div class="row"><b>command not found</b><span>Open a new terminal. The installer adds <code>~/.local/bin</code> to <code>~/.zprofile</code>.</span></div>
+        <div class="row"><b>silent</b><span>Run <code>ltbv doctor</code>, then check SHUT UP and quiet hours in the controller.</span></div>
+        <div class="row"><b>Ollama unavailable</b><span>Install and start Ollama, or choose <code>none</code> as the condense provider.</span></div>
+        <div class="row"><b>update refused</b><span>The installed checkout has local changes. Commit or remove them before running <code>ltbv update</code>.</span></div>
+      </div>
+      <p class="note">The installer is safe to rerun. Existing Claude and Codex settings are backed up before hook changes.</p>
+    </section>
+
+    <footer><span>ltbv · let there be voice</span><span><a href="field-guide.html">Field Guide</a> · <a href="build-packet.html">Build Packet</a></span></footer>
+  </main>
+  <script>
+    for (const button of document.querySelectorAll(".copy")) {
+      button.addEventListener("click", async () => {
+        const text = button.previousElementSibling.textContent.trim();
+        try {
+          await navigator.clipboard.writeText(text);
+          button.textContent = "copied";
+          setTimeout(() => { button.textContent = "copy"; }, 1200);
+        } catch { button.textContent = "select"; }
+      });
+    }
+  </script>
+</body>
+</html>

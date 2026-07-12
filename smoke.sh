@@ -116,6 +116,7 @@ trap cleanup EXIT
 cd "$ROOT"
 
 if "$PY" -m unittest -q test_voice_features.py test_daemon_contract.py >/dev/null 2>&1; then pass "speech contract evals"; else fail "speech contract evals"; fi
+if "$ROOT/test_install.sh" >/dev/null 2>&1; then pass "installer lifecycle"; else fail "installer lifecycle"; fi
 
 # 1. daemon up (start if down)
 if ! curl -sf -m 2 "$BASE/health" >/dev/null 2>&1; then

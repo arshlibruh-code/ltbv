@@ -21,6 +21,16 @@ class DaemonContractTest(unittest.TestCase):
             daemon.enqueue_speak("two", "/repo", session_id="b", turn_id="2")
         self.assertEqual(len(daemon.pending), 2)
 
+    def test_zero_volume_never_ducks_media(self):
+        original = daemon.config["volume"]
+        try:
+            daemon.config["volume"] = 0
+            self.assertFalse(daemon.media_should_duck([b"\x01\x00"] * 20))
+            daemon.config["volume"] = 1
+            self.assertTrue(daemon.media_should_duck([b"\x01\x00"] * 20))
+        finally:
+            daemon.config["volume"] = original
+
     def test_turn_start_does_not_wait_for_git(self):
         blocker = mock.Mock()
         with mock.patch.object(daemon, "git_snapshot", blocker), mock.patch.object(daemon.threading, "Thread") as thread:
