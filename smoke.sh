@@ -248,5 +248,23 @@ BROWSER_GOT=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(st
 curl -sf -m 2 -X POST "$BASE/config" -d "{\"browser_youtube_ducking_enabled\": $BROWSER_DUCK}" >/dev/null
 if [ "$BROWSER_GOT" = "true" ]; then pass "browser duck config"; else fail "browser duck config"; fi
 
+INBOX_ENABLED=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(str(json.load(sys.stdin)["config"]["voice_inbox_enabled"]).lower())')
+curl -sf -m 2 -X POST "$BASE/config" -d '{"voice_inbox_enabled": true}' >/dev/null
+curl -sf -m 2 -X POST "$BASE/inbox/clear" -d '{}' >/dev/null
+curl -sf -m 2 -X POST "$BASE/config" -d '{"volume": 0}' >/dev/null
+SINCE=$("$PY" -c "import time; print(time.time())")
+curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"Inbox smoke completed with checks passed.","cwd":"/tmp/ltbv-inbox"}' >/dev/null
+INBOX_COUNT=0
+for _ in $(seq 1 40); do
+  INBOX_COUNT=$(curl -sf -m 2 "$BASE/inbox" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["count"])')
+  [ "$INBOX_COUNT" -gt 0 ] && break
+  sleep 1
+done
+HELD_SPEAKS=$(log_count speak "$SINCE")
+BRIEF_COUNT=$(curl -sf -m 2 -X POST "$BASE/inbox/return" -d '{}' | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["count"])')
+curl -sf -m 2 -X POST "$BASE/config" -d "{\"voice_inbox_enabled\": $INBOX_ENABLED}" >/dev/null
+restore_volume
+if [ "$INBOX_COUNT" = "1" ] && [ "$BRIEF_COUNT" = "1" ] && [ "$HELD_SPEAKS" -eq 0 ]; then pass "voice inbox briefing"; else fail "voice inbox briefing"; fi
+
 if [ "$FAIL" = 0 ]; then echo "SMOKE PASS"; else echo "SMOKE FAIL"; fi
 exit "$FAIL"

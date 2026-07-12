@@ -26,6 +26,7 @@ Repo-local notes for Claude and Codex.
 - Prompt text is redacted and held in memory only. Restart recovery persists compact request intent, turn identity, transcript location, and the Git baseline in `.turns.json`.
 - Spoken claims are checked against actual local test commands and outcomes found in Claude/Codex transcripts. Diagnostics shows intent and verification metadata, never prompt or transcript bodies.
 - Attributable Git diffs are translated into behavioral facts. `.timeline.json` keeps only compact outcomes for session-arc narration and `./voice recap`; it stores no prompt, reply, or source text.
+- Optional Voice Inbox mode persists prepared replies in `.voice-inbox.json` without speaking them. `I'm back` drains them into one local return briefing.
 - Condensing is local-only through Ollama, with `none` as the deterministic fallback.
 - Replies over `max_direct_chars` (default 400) get condensed by the configured summarizer; on failure it speaks the first sentence with a short note.
 - Markdown-table replies send the raw full response to the summarizer first, so the voice gets a conversational table summary instead of row-by-row noise. If summarization fails, a mostly-table reply becomes a spoken invite to look.
@@ -37,13 +38,14 @@ Repo-local notes for Claude and Codex.
 - Quiet hours (`quiet_hours` in config) accept speech but keep silent, logged as `quiet_skip`.
 - Empty `last_assistant_message` falls back to parsing `transcript_path`.
 - Playback via `afplay` honoring `rate` and `volume` config. The daemon exits after `idle_exit_s` idle.
-- Optional ducking targets Spotify and Browser/YouTube independently. Browser/YouTube is controlled by the companion Chromium extension through `GET /browser/duck`.
+- Optional ducking targets Spotify and Browser/YouTube independently. Browser/YouTube is controlled by the companion Chromium extension through `GET /browser/duck`. Spotify writes `.media-duck-lease.json` before fading so startup and the watchdog can restore interrupted playback state.
 - Errors land in `.voice.log` as `event: "error"`. The log self-caps around 500 lines.
 - Repo earcons, intent cues, build-result sonification, adaptive brevity, pronunciation dictionaries, and privacy redaction are local defaults. A repo can override speech using `.ltbv/pronounce.json`.
 - When multiple projects finish together, the daemon can speak one radio bulletin naming each project. Backchannel commands are available through `/backchannel` and the CLI.
 
 ## Endpoints
-- `GET /` controller, `GET /health` (includes live Git state), `GET /doctor`, `GET /config`, `GET /voices`, `GET /engines`, `GET /log/tail?limit=N`.
+- `GET /` controller, `GET /health` (includes live Git state), `GET /doctor`, `GET /config`, `GET /voices`, `GET /engines`, `GET /inbox`, `GET /log/tail?limit=N`.
+- `POST /inbox/return` drains and speaks one briefing; `POST /inbox/clear` discards waiting entries.
 - `POST /speak`, `POST /stop`, `POST /turn/start`, `POST /backchannel {command}`, `POST /config`, `POST /engine {name}`, `POST /bench {text, voice?}`, `POST /audition {voice}`, `POST /recondense`.
 - Warm shootout on 2026-07-06, same sentence: Pocket RTF 0.160, TTFA 0.135s, synth 0.459s, duration 2.880s. Kokoro RTF 0.096, TTFA 0.420s, synth 0.420s, duration 4.375s.
 

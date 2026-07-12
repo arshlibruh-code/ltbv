@@ -335,6 +335,12 @@
               <span class="hint">fade media during speech, restore after</span>
             </div>
             <div class="row-actions">
+              <button class="btn toggle" id="inbox-toggle">voice inbox off</button>
+              <button class="btn" id="return-briefing">I'm back</button>
+              <button class="btn" id="inbox-clear">clear</button>
+              <span class="hint" id="inbox-state">no updates waiting</span>
+            </div>
+            <div class="row-actions">
               <button class="btn" data-backchannel="repeat">repeat</button>
               <button class="btn" data-backchannel="slower">slower</button>
               <button class="btn" data-backchannel="faster">faster</button>
@@ -808,6 +814,8 @@
       $("duck-toggle").textContent = cfg.ducking_enabled ? "spotify duck on" : "spotify duck off";
       $("browser-duck-toggle").classList.toggle("on", !!cfg.browser_youtube_ducking_enabled);
       $("browser-duck-toggle").textContent = cfg.browser_youtube_ducking_enabled ? "browser / youtube duck on" : "browser / youtube duck off";
+      $("inbox-toggle").classList.toggle("on", !!cfg.voice_inbox_enabled);
+      $("inbox-toggle").textContent = cfg.voice_inbox_enabled ? "voice inbox on" : "voice inbox off";
     }
     function attachScrub(el, k) {
       let x0 = 0, v0 = 0, live = null, moved = false, pid = null;
@@ -1231,6 +1239,27 @@
       renderDucking();
       pushConfig({ browser_youtube_ducking_enabled: cfg.browser_youtube_ducking_enabled }, "saved-desk", "err-desk");
     };
+    async function refreshInbox() {
+      try {
+        const data = await api("/inbox");
+        $("inbox-state").textContent = data.count
+          ? `${data.count} update${data.count === 1 ? "" : "s"} waiting`
+          : "no updates waiting";
+      } catch { $("inbox-state").textContent = "inbox unavailable"; }
+    }
+    $("inbox-toggle").onclick = () => {
+      cfg.voice_inbox_enabled = !cfg.voice_inbox_enabled;
+      renderDucking();
+      pushConfig({ voice_inbox_enabled: cfg.voice_inbox_enabled }, "saved-desk", "err-desk");
+    };
+    $("return-briefing").onclick = async () => {
+      await api("/inbox/return", {});
+      refreshInbox();
+    };
+    $("inbox-clear").onclick = async () => {
+      await api("/inbox/clear", {});
+      refreshInbox();
+    };
     for (const button of document.querySelectorAll("[data-backchannel]")) {
       button.onclick = async () => {
         button.disabled = true;
@@ -1305,6 +1334,7 @@
         if (ev.event === "now") { setNow(ev.on ? ev : null); return; }
         if (ev.event === "wave") { startStage(ev.peaks, ev.duration); return; }
         if (ev.event === "mute") { setMuteState(!!ev.muted); return; }
+        if (ev.event === "inbox") { refreshInbox(); return; }
         if (ev.event === "config") {
           api("/config").then((c) => {
             cfg = c.config;
@@ -1337,6 +1367,7 @@
       drawHisto(); renderLedger();
       if (t.stages) renderInspector(t.stages);
       await pollHealth();
+      await refreshInbox();
       setInterval(pollHealth, 10000);
       connectSSE();
       addEventListener("resize", drawHisto);

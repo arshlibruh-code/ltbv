@@ -51,6 +51,8 @@ LOG_PATH = ROOT / ".voice.log"
 CONFIG_PATH = ROOT / "config.json"
 TURN_STATE_PATH = ROOT / ".turns.json"
 TIMELINE_PATH = ROOT / ".timeline.json"
+INBOX_PATH = ROOT / ".voice-inbox.json"
+DUCK_LEASE_PATH = ROOT / ".media-duck-lease.json"
 CONTROLLER_PATH = ROOT / "controller.html"
 RING_DIR = ROOT / ".clips"
 VOICES_DIR = ROOT / "voices"
@@ -319,6 +321,7 @@ CONFIG_SPEC = {
     "privacy_sentinel_enabled": {"default": True, "kind": "bool"},
     "radio_bulletins_enabled": {"default": True, "kind": "bool"},
     "radio_batch_window_ms": {"default": 450, "kind": "int", "min": 0, "max": 3000},
+    "voice_inbox_enabled": {"default": False, "kind": "bool"},
     "duck_target_volume": {"default": 25, "kind": "int", "min": 0, "max": 100},
     "duck_fade_ms": {"default": 400, "kind": "int", "min": 0, "max": 3000},
     "duck_restore_delay_ms": {"default": 150, "kind": "int", "min": 0, "max": 3000},
@@ -484,6 +487,7 @@ sse_lock = threading.Lock()
 recent_projects = {}
 turn_records = {}
 timeline_events = []
+voice_inbox = []
 prefix_counter = 0
 clip_ring = OrderedDict()
 
@@ -645,9 +649,87 @@ def recap_text(cwd: str | None = None) -> str:
         prefix += facts[-1].rstrip(".") + "."
     return trim_to_words(prefix, 38)
 
+
+def load_voice_inbox() -> None:
+    global voice_inbox
+    try:
+        raw = json.loads(INBOX_PATH.read_text()) if INBOX_PATH.exists() else []
+        voice_inbox = raw[-100:] if isinstance(raw, list) else []
+    except Exception:
+        voice_inbox = []
+        append_log("inbox_error", action="load")
+
+
+def save_voice_inbox() -> None:
+    try:
+        INBOX_PATH.write_text(json.dumps(voice_inbox[-100:], indent=2) + "\n")
+    except Exception:
+        append_log("inbox_error", action="save")
+
+
+def inbox_add(cwd: str | None, text: str, meta: dict, intent: str) -> None:
+    entry = {
+        "ts": round(time.time(), 3),
+        "cwd": cwd,
+        "project": project_name(cwd) or "project",
+        "text": trim_to_words(text, 42),
+        "intent": intent,
+        "verification": meta.get("verification") or "unknown",
+        "tests": meta.get("verification_tests") or [],
+        "semantic": meta.get("semantic") or [],
+    }
+    with state_lock:
+        voice_inbox.append(entry)
+        del voice_inbox[:-100]
+        save_voice_inbox()
+    append_log("inbox_add", project=entry["project"], intent=intent)
+    publish({"event": "inbox", "count": len(voice_inbox)})
+
+
+def inbox_briefing(entries: list[dict]) -> str:
+    if not entries:
+        return "You're caught up. No agent updates are waiting."
+    latest_by_project = {}
+    for entry in entries:
+        latest_by_project[entry.get("project") or "project"] = entry
+    ordered = sorted(
+        latest_by_project.values(),
+        key=lambda item: item.get("intent") not in {"blocker", "needs_input", "warning"},
+    )
+    clauses = []
+    for entry in ordered[:5]:
+        text = str(entry.get("text") or "update ready").strip().rstrip(".")
+        clauses.append(f"{entry.get('project') or 'project'}: {text}")
+    opening = f"{len(entries)} update{'s' if len(entries) != 1 else ''} while you were away. "
+    return trim_to_words(opening + ". ".join(clauses) + ".", 72)
+
+
+def drain_voice_inbox() -> tuple[str, int]:
+    with state_lock:
+        entries = list(voice_inbox)
+        voice_inbox.clear()
+        save_voice_inbox()
+    text = inbox_briefing(entries)
+    append_log(
+        "return_briefing",
+        count=len(entries),
+        projects=sorted({e.get("project") for e in entries if e.get("project")}),
+    )
+    publish({"event": "inbox", "count": 0})
+    return text, len(entries)
+
+
+def should_hold_for_inbox(kind: str, prepared: bool = False) -> bool:
+    return bool(config.get("voice_inbox_enabled") and kind == "reply" and not prepared)
+
 config = {key: spec["default"] for key, spec in CONFIG_SPEC.items()}
 duck_state = {
-    "spotify": {"did_duck": False, "saved_volume": None},
+    "spotify": {
+        "did_duck": False,
+        "saved_volume": None,
+        "ducked_at": None,
+        "restoring": False,
+    },
     "browser_youtube": {"active": False, "generation": 0},
 }
 duck_lock = threading.Lock()
@@ -1267,9 +1349,19 @@ def spotify_duck_on() -> None:
         current = spotify_volume()
         if current is None:
             return
-        target = int(config["duck_target_volume"])
+        target = min(current, int(config["duck_target_volume"]))
+        if target == current:
+            return
         duck_state["spotify"]["saved_volume"] = current
         duck_state["spotify"]["did_duck"] = True
+        duck_state["spotify"]["ducked_at"] = time.monotonic()
+        duck_state["spotify"]["restoring"] = False
+        try:
+            DUCK_LEASE_PATH.write_text(
+                json.dumps({"app": "Spotify", "saved_volume": current, "ts": time.time()}) + "\n"
+            )
+        except OSError:
+            append_log("duck_error", detail="could not persist media restoration lease")
     fade_spotify_volume(current, target, int(config["duck_fade_ms"]))
     append_log("duck_on", app="Spotify", from_volume=current, to_volume=target)
 
@@ -1278,20 +1370,84 @@ def spotify_duck_off() -> None:
     with duck_lock:
         did_duck = bool(duck_state["spotify"]["did_duck"])
         saved = duck_state["spotify"]["saved_volume"]
-        duck_state["spotify"]["did_duck"] = False
-        duck_state["spotify"]["saved_volume"] = None
+        if duck_state["spotify"].get("restoring"):
+            return
+        if did_duck and saved is not None:
+            duck_state["spotify"]["restoring"] = True
     if not did_duck or saved is None:
         return
     delay = int(config["duck_restore_delay_ms"]) / 1000
     if delay:
         time.sleep(delay)
     if not spotify_running():
+        with duck_lock:
+            duck_state["spotify"]["restoring"] = False
         return
     current = spotify_volume()
     if current is None:
+        with duck_lock:
+            duck_state["spotify"]["restoring"] = False
         return
     fade_spotify_volume(current, int(saved), int(config["duck_fade_ms"]))
+    with duck_lock:
+        duck_state["spotify"]["did_duck"] = False
+        duck_state["spotify"]["saved_volume"] = None
+        duck_state["spotify"]["ducked_at"] = None
+        duck_state["spotify"]["restoring"] = False
+    DUCK_LEASE_PATH.unlink(missing_ok=True)
     append_log("duck_off", app="Spotify", from_volume=current, to_volume=int(saved))
+
+
+def recover_media_state() -> bool:
+    if not DUCK_LEASE_PATH.exists():
+        return False
+    try:
+        lease = json.loads(DUCK_LEASE_PATH.read_text())
+        saved = int(lease["saved_volume"])
+    except Exception:
+        append_log("duck_error", detail="invalid media restoration lease")
+        DUCK_LEASE_PATH.unlink(missing_ok=True)
+        return False
+    with duck_lock:
+        duck_state["spotify"].update(
+            {
+                "did_duck": True,
+                "saved_volume": saved,
+                "ducked_at": time.monotonic() - 6,
+                "restoring": False,
+            }
+        )
+    if not spotify_running():
+        return False
+    current = spotify_volume()
+    if current is None:
+        return False
+    fade_spotify_volume(current, saved, int(config["duck_fade_ms"]))
+    with duck_lock:
+        duck_state["spotify"].update(
+            {
+                "did_duck": False,
+                "saved_volume": None,
+                "ducked_at": None,
+                "restoring": False,
+            }
+        )
+    DUCK_LEASE_PATH.unlink(missing_ok=True)
+    append_log("duck_recovered", app="Spotify", from_volume=current, to_volume=saved)
+    return True
+
+
+def media_restore_watchdog() -> None:
+    while True:
+        time.sleep(1)
+        with duck_lock:
+            did_duck = bool(duck_state["spotify"]["did_duck"])
+            ducked_at = duck_state["spotify"].get("ducked_at")
+        with state_lock:
+            playing = bool(active_player and active_player.poll() is None)
+        if did_duck and not playing and ducked_at and time.monotonic() - ducked_at > 5:
+            append_log("duck_watchdog", action="restore")
+            spotify_duck_off()
 
 
 def browser_duck_on() -> None:
@@ -1762,7 +1918,8 @@ def process_job(job: dict) -> None:
     if not text and not earcon_only:
         append_log("skip_empty", cwd=cwd, **meta)
         return
-    if in_quiet_hours():
+    hold_for_inbox = should_hold_for_inbox(kind, bool(job.get("prepared")))
+    if in_quiet_hours() and not hold_for_inbox:
         append_log("quiet_skip", cwd=cwd, kind=kind)
         return
     prefix, prefixed = "", False
@@ -1810,6 +1967,10 @@ def process_job(job: dict) -> None:
         return
     if kind == "reply" and not job.get("prepared"):
         remember_timeline(cwd, meta, intent, build_signal)
+        if hold_for_inbox:
+            inbox_add(cwd, text, meta, intent)
+            append_log("inbox_hold", cwd=cwd, project=project_name(cwd), intent=intent)
+            return
     voice = voice_for_job(job)
     engine = engine_by_name(job.get("engine"))
     cue, cue_meta = earcon_pcm(
@@ -2195,6 +2356,13 @@ class Handler(BaseHTTPRequestHandler):
             if route == "/timeline":
                 json_response(self, 200, {"ok": True, "events": timeline_events[-50:], "recap": recap_text()})
                 return
+            if route == "/inbox":
+                json_response(
+                    self,
+                    200,
+                    {"ok": True, "count": len(voice_inbox), "entries": voice_inbox[-50:]},
+                )
+                return
             json_response(self, 404, {"error": "not_found"})
         except Exception:
             log_error("do_GET")
@@ -2212,6 +2380,22 @@ class Handler(BaseHTTPRequestHandler):
                 data = read_json(self)
                 ok, result = backchannel(data.get("command", ""))
                 json_response(self, 200 if ok else 400, {"ok": ok, "result": result})
+                return
+            if self.path == "/inbox/return":
+                text, count = drain_voice_inbox()
+                gen = enqueue_speak(text, None, kind="audition", prepared=True)
+                json_response(
+                    self,
+                    202,
+                    {"ok": True, "count": count, "text": text, "generation": gen},
+                )
+                return
+            if self.path == "/inbox/clear":
+                with state_lock:
+                    voice_inbox.clear()
+                    save_voice_inbox()
+                publish({"event": "inbox", "count": 0})
+                json_response(self, 200, {"ok": True, "count": 0})
                 return
             if self.path == "/turn/start":
                 data = read_json(self)
@@ -2382,11 +2566,14 @@ def main() -> int:
     load_config()
     load_turn_records()
     load_timeline()
+    load_voice_inbox()
     try:
         server = ThreadingHTTPServer((HOST, PORT), Handler)
     except OSError:
         return 0
+    recover_media_state()
     threading.Thread(target=idle_watch, daemon=True).start()
+    threading.Thread(target=media_restore_watchdog, daemon=True).start()
     server.serve_forever()
     return 0
 
