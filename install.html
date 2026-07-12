@@ -8,26 +8,38 @@
   <style>
     :root {
       color-scheme: dark;
-      --bg: #161514;
-      --panel: #1d1c1a;
-      --panel-2: #232120;
-      --line: #33302c;
-      --soft: #292724;
-      --text: #ebe5dd;
-      --muted: #aaa198;
-      --faint: #756f68;
-      --amber: #c97e1c;
-      --cyan: #6ca8ad;
-      --green: #74b888;
+      --bg: #0f1419;
+      --panel: #171d24;
+      --panel-2: #1b2128;
+      --line: #313740;
+      --soft: #262c34;
+      --text: #e6ddd1;
+      --muted: #b0a89c;
+      --faint: #7d857f;
+      --amber: #c9c1b4;
+      --cyan: #8f9890;
+      --green: #a9bda9;
       --mono: "Share Tech Mono", ui-monospace, Menlo, monospace;
       --sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
     }
     * { box-sizing: border-box; border-radius: 0 !important; }
     html { scroll-behavior: smooth; }
-    body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 var(--sans); }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.06), transparent 38%),
+        radial-gradient(circle at center, rgba(255, 255, 255, 0.03), transparent 55%),
+        linear-gradient(180deg, #11161c 0%, #0d1116 100%);
+      color: var(--text);
+      font: 13px/1.42 var(--sans);
+    }
     a { color: inherit; text-decoration: none; }
     code, pre, .mono, .num { font-family: var(--mono); }
-    .shell { max-width: 1080px; margin: 0 auto; padding: 20px 22px 60px; }
+    .shell { max-width: 900px; margin: 0 auto; padding: 28px 24px 60px; position: relative; }
+    .shell::before, .shell::after { content: "+"; position: fixed; top: 18px; color: #8f948c; font: 20px/1 var(--mono); opacity: .72; pointer-events: none; }
+    .shell::before { left: 22px; }
+    .shell::after { right: 22px; }
     .top {
       display: flex; align-items: center; justify-content: space-between; gap: 18px;
       padding: 0 0 14px; border-bottom: 1px solid var(--line);
@@ -39,35 +51,17 @@
     .nav { display: flex; gap: 5px; flex-wrap: wrap; }
     .nav a { padding: 6px 9px; border: 1px solid var(--line); color: var(--muted); font-size: 11px; }
     .nav a[aria-current="page"] { color: var(--text); border-color: var(--amber); }
-    .hero { display: grid; grid-template-columns: 1.25fr .75fr; gap: 12px; padding: 34px 0 18px; }
-    .hero-main, .hero-side, .card { border: 1px solid var(--line); background: var(--panel); }
-    .hero-main { padding: 28px; }
-    .kicker { color: var(--amber); font: 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; }
-    h1 { margin: 12px 0 8px; font-size: clamp(35px, 7vw, 72px); line-height: .92; letter-spacing: -.055em; }
-    .lede { margin: 0; max-width: 620px; color: var(--muted); font-size: 15px; }
-    .hero-side { display: grid; grid-template-rows: repeat(3, 1fr); }
-    .metric { padding: 14px 16px; border-bottom: 1px solid var(--line); }
-    .metric:last-child { border: 0; }
-    .metric b { display: block; font: 23px var(--mono); color: var(--text); }
-    .metric span { color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
-    .section { margin-top: 12px; }
-    .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 0 7px; }
-    .section-head h2 { margin: 0; font-size: 15px; }
-    .section-head span { color: var(--faint); font: 10px var(--mono); text-transform: uppercase; }
-    .command { position: relative; border: 1px solid var(--line); background: #11100f; padding: 18px 92px 18px 18px; overflow: auto; }
-    .command code { color: #dfd6cb; white-space: pre; font-size: 13px; }
+    .hero { padding: 46px 0 28px; border-bottom: 1px solid var(--line); }
+    .hero-banner { display: block; width: min(190px, 52%); height: auto; margin: 0 0 24px; opacity: .9; }
+    h1 { margin: 0 0 8px; font-size: 32px; line-height: 1.05; letter-spacing: -.025em; }
+    .lede { margin: 0; max-width: 560px; color: var(--muted); font-size: 14px; }
+    .section { margin-top: 28px; }
+    .section-head { padding: 0 0 8px; }
+    .section-head h2 { margin: 0; font-size: 14px; }
+    .command { position: relative; border: 1px solid var(--line); background: #0d1116; padding: 18px 92px 18px 18px; overflow: auto; }
+    .command code { color: var(--text); white-space: pre; font-size: 13px; }
     .copy { position: absolute; top: 9px; right: 9px; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); padding: 7px 10px; cursor: pointer; font: 10px var(--mono); text-transform: uppercase; }
     .copy:hover, .copy:focus { color: var(--text); border-color: var(--amber); outline: none; }
-    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); }
-    .step { background: var(--panel); padding: 17px; min-height: 132px; }
-    .step .num { color: var(--amber); font-size: 11px; }
-    .step h3 { margin: 12px 0 6px; font-size: 13px; }
-    .step p { margin: 0; color: var(--muted); font-size: 12px; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .card { padding: 17px; }
-    .card h3 { margin: 0 0 8px; font-size: 13px; }
-    .card p { margin: 0; color: var(--muted); font-size: 12px; }
-    .card code { color: var(--cyan); }
     .rows { border: 1px solid var(--line); }
     .row { display: grid; grid-template-columns: 180px 1fr; gap: 16px; padding: 11px 13px; border-bottom: 1px solid var(--soft); }
     .row:last-child { border: 0; }
@@ -79,10 +73,7 @@
     @media (max-width: 760px) {
       .shell { padding: 14px; }
       .top, footer { align-items: flex-start; flex-direction: column; }
-      .hero, .grid { grid-template-columns: 1fr; }
-      .steps { grid-template-columns: 1fr; }
       .row { grid-template-columns: 1fr; gap: 4px; }
-      .hero-main { padding: 20px; }
     }
   </style>
 </head>
@@ -98,74 +89,62 @@
     </header>
 
     <section class="hero">
-      <div class="hero-main">
-        <span class="kicker">macOS · local · reversible</span>
-        <h1>Give your agents a voice.</h1>
-        <p class="lede">One installer wires Claude Code and Codex into a local speech daemon, keeps your existing settings, and gives you one command to verify the whole loop.</p>
-      </div>
-      <div class="hero-side">
-        <div class="metric"><b>1</b><span>install command</span></div>
-        <div class="metric"><b>3</b><span>hook events per agent</span></div>
-        <div class="metric"><b>0</b><span>cloud speech calls</span></div>
-      </div>
+      <img class="hero-banner" src="assets/ltbv-banner.png" alt="ltbv banner">
+      <h1>Install ltbv</h1>
+      <p class="lede">Local speech for Claude Code and Codex on macOS.</p>
     </section>
 
     <section class="section" id="install">
-      <div class="section-head"><h2>Install</h2><span>01 · paste into Terminal</span></div>
+      <div class="section-head"><h2>Install</h2></div>
       <div class="command"><code>curl -fsSL https://raw.githubusercontent.com/arshlibruh-code/ltbv/main/install.sh | bash</code><button class="copy" type="button">copy</button></div>
-      <div class="command" style="margin-top:8px"><code>ltbv doctor
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Verify</h2></div>
+      <div class="command"><code>ltbv doctor
 ltbv open</code><button class="copy" type="button">copy</button></div>
     </section>
 
     <section class="section">
-      <div class="section-head"><h2>What happens</h2><span>02 · no hidden steps</span></div>
-      <div class="steps">
-        <article class="step"><span class="num">01</span><h3>Install locally</h3><p>Clones into <code>~/.local/share/ltbv</code>, installs locked Python dependencies, and creates <code>~/.local/bin/ltbv</code>.</p></article>
-        <article class="step"><span class="num">02</span><h3>Wire both agents</h3><p>Backs up existing settings, preserves unrelated configuration, then adds Stop, UserPromptSubmit, and Notification hooks.</p></article>
-        <article class="step"><span class="num">03</span><h3>Verify the loop</h3><p><code>ltbv doctor</code> checks the daemon, TTS engine, both hook sets, local condensing, playback, and browser adapter.</p></article>
-      </div>
-    </section>
-
-    <section class="section">
-      <div class="section-head"><h2>Requirements</h2><span>03 · checked before mutation</span></div>
+      <div class="section-head"><h2>What the installer changes</h2></div>
       <div class="rows">
-        <div class="row"><b>macOS</b><span>Apple Silicon and Intel Macs are accepted.</span></div>
-        <div class="row"><b>git + curl</b><span>Git ships with Xcode Command Line Tools. The installer explains the command if Git is absent.</span></div>
-        <div class="row"><b>uv</b><span>Installed automatically from Astral when missing.</span></div>
-        <div class="row"><b>Ollama</b><span>Optional. It condenses long replies locally. Without it, ltbv uses deterministic fallback speech.</span></div>
+        <div class="row"><b>~/.local/share/ltbv</b><span>Application checkout and locked Python environment.</span></div>
+        <div class="row"><b>~/.local/bin/ltbv</b><span>Command for opening, checking, updating, and removing ltbv.</span></div>
+        <div class="row"><b>Claude + Codex</b><span>Adds managed hooks and preserves unrelated configuration.</span></div>
+        <div class="row"><b>settings backups</b><span>Written beside the original files before hook changes.</span></div>
       </div>
     </section>
 
     <section class="section">
-      <div class="section-head"><h2>Daily commands</h2><span>04 · one control surface</span></div>
-      <div class="grid">
-        <article class="card"><h3><code>ltbv open</code></h3><p>Wakes the daemon quietly and opens the controller at <code>127.0.0.1:7333</code>.</p></article>
-        <article class="card"><h3><code>ltbv doctor</code></h3><p>Prints an evidence-backed health report for the complete local loop.</p></article>
-        <article class="card"><h3><code>ltbv update</code></h3><p>Fast-forwards the installed checkout and reapplies the idempotent hook configuration.</p></article>
-        <article class="card"><h3><code>ltbv uninstall</code></h3><p>Removes only ltbv hooks, PATH block, command, and installed checkout. Backups remain beside your settings.</p></article>
+      <div class="section-head"><h2>Optional</h2></div>
+      <div class="rows">
+        <div class="row"><b>Ollama</b><span>Condenses long replies locally. Without it, ltbv uses deterministic fallback speech.</span></div>
+        <div class="row"><b>Browser audio</b><span>Load <code>~/.local/share/ltbv/browser-extension</code> as an unpacked Arc or Chrome extension for YouTube ducking.</span></div>
       </div>
     </section>
 
     <section class="section">
-      <div class="section-head"><h2>Optional browser audio</h2><span>05 · Arc or Chrome</span></div>
-      <div class="card">
-        <h3>YouTube ducking</h3>
-        <p>Open <code>arc://extensions</code> or <code>chrome://extensions</code>, enable Developer mode, choose Load unpacked, then select <code>~/.local/share/ltbv/browser-extension</code>. Enable Browser / YouTube ducking in the controller.</p>
+      <div class="section-head"><h2>Manage</h2></div>
+      <div class="command"><code>ltbv update
+ltbv uninstall</code><button class="copy" type="button">copy</button></div>
+      <div class="rows" style="margin-top:8px">
+        <div class="row"><b>update</b><span>Fast-forwards the installed checkout and reapplies managed hooks.</span></div>
+        <div class="row"><b>uninstall</b><span>Removes ltbv and its managed hook entries. Settings backups are retained.</span></div>
       </div>
     </section>
 
     <section class="section">
-      <div class="section-head"><h2>Troubleshooting</h2><span>06 · shortest path first</span></div>
+      <div class="section-head"><h2>Troubleshooting</h2></div>
       <div class="rows">
         <div class="row"><b>command not found</b><span>Open a new terminal. The installer adds <code>~/.local/bin</code> to <code>~/.zprofile</code>.</span></div>
         <div class="row"><b>silent</b><span>Run <code>ltbv doctor</code>, then check SHUT UP and quiet hours in the controller.</span></div>
         <div class="row"><b>Ollama unavailable</b><span>Install and start Ollama, or choose <code>none</code> as the condense provider.</span></div>
         <div class="row"><b>update refused</b><span>The installed checkout has local changes. Commit or remove them before running <code>ltbv update</code>.</span></div>
       </div>
-      <p class="note"><span class="ok">Safe to rerun:</span> installation is idempotent. Existing Claude and Codex settings are backed up before every hook change.</p>
+      <p class="note">The installer is safe to rerun. Existing Claude and Codex settings are backed up before hook changes.</p>
     </section>
 
-    <footer><span>ltbv · let there be voice</span><span>local by default, silent on failure</span></footer>
+    <footer><span>ltbv · let there be voice</span><span><a href="field-guide.html">Field Guide</a> · <a href="build-packet.html">Build Packet</a></span></footer>
   </main>
   <script>
     for (const button of document.querySelectorAll(".copy")) {
