@@ -15,6 +15,8 @@ Repo-local notes for Claude and Codex.
 - `smoke.sh`: end-to-end confidence suite. Run before committing daemon or hook changes.
 - `voice`: CLI helper. `./voice wake|status|doctor|chill|repeat|slower|faster|brief|normal|shutup|unshutup|say "text"`.
 - `install.sh`: relocatable macOS installer for the daemon and Claude/Codex hooks.
+- `test_install.sh`: isolated-home install, rerun, update, and uninstall verification.
+- `install.html`: public installation and lifecycle guide.
 - `bench_tts.py`: Pocket TTS bench script.
 - `build-packet.html`: implementation packet and source of truth.
 - `field-guide.html`: narrative guide for how the system behaves.
@@ -52,6 +54,7 @@ Repo-local notes for Claude and Codex.
 
 ## Test
 - Full suite: `./smoke.sh` (temporarily lifts the kill switch, restores it after).
+- Isolated installer lifecycle: `./test_install.sh`
 - Quick daemon check: `./voice status`
 - Test hook directly:
   - `printf '%s' '{"hook_event_name":"Stop","last_assistant_message":"voice test"}' | ./.venv/bin/python hook.py`
