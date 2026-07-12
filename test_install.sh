@@ -16,7 +16,7 @@ git clone -q "$ROOT" "$SOURCE"
 git -C "$SOURCE" switch -q -c fixture
 cp "$ROOT/install.sh" "$SOURCE/install.sh"
 git -C "$SOURCE" add install.sh
-git -C "$SOURCE" -c user.name=ltbv-test -c user.email=test@localhost commit -qm "installer fixture"
+git -C "$SOURCE" -c user.name=ltbv-test -c user.email=test@localhost commit --allow-empty -qm "installer fixture"
 
 mkdir -p "$(dirname "$CLAUDE_SETTINGS")" "$(dirname "$CODEX_CONFIG")"
 printf '{"permissions":{"allow":["Bash(git status)"]}}\n' > "$CLAUDE_SETTINGS"
