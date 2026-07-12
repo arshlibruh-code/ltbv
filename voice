@@ -53,7 +53,7 @@ print(f"{'"'"'overall'"'"':<20} {'"'"'ready'"'"' if d.get('"'"'ok'"'"') else '"'
   chill|stop)
     curl -sf -m 2 -X POST "$BASE/stop" -d '{}' >/dev/null && echo "chilled" || echo "daemon down, nothing to chill"
     ;;
-  repeat|slower|faster|brief|normal)
+  repeat|slower|faster|brief|normal|recap)
     curl -sf -m 2 -X POST "$BASE/backchannel" -d "{\"command\": \"$1\"}" \
       | "$PY" -c 'import json,sys; d=json.load(sys.stdin); print(d.get("result", "backchannel failed"))' \
       || echo "daemon down, backchannel unavailable"
@@ -73,7 +73,7 @@ print(f"{'"'"'overall'"'"':<20} {'"'"'ready'"'"' if d.get('"'"'ok'"'"') else '"'
     echo "queued"
     ;;
   *)
-    echo "usage: voice status|wake|doctor|chill|repeat|slower|faster|brief|normal|shutup|unshutup|say \"text\""
+    echo "usage: voice status|wake|doctor|chill|repeat|slower|faster|brief|normal|recap|shutup|unshutup|say \"text\""
     exit 1
     ;;
 esac

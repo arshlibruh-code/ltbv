@@ -89,7 +89,7 @@ def _run_git(cwd: str | None, *args: str) -> str:
             text=True,
             timeout=2,
         )
-        return out.stdout.strip() if out.returncode == 0 else ""
+        return out.stdout.rstrip() if out.returncode == 0 else ""
     except Exception:
         return ""
 
@@ -170,6 +170,72 @@ def concept_for_path(path: str) -> str:
     return stem or "project files"
 
 
+def _human_symbol(value: str) -> str:
+    value = re.sub(r"^(?:test_|get_|set_|is_)", "", value or "")
+    return value.replace("_", " ").replace("-", " ").strip()
+
+
+def semantic_diff_facts(root: str, before: dict, files: list[str], current_head: str) -> list[str]:
+    baseline_dirty = {path for _, path in _status_paths(before.get("status", ""))}
+    attributable = [path for path in files if path not in baseline_dirty][:20]
+    if not attributable:
+        return []
+    before_head = before.get("head")
+    patches = []
+    if before_head and current_head and before_head != current_head:
+        patches.append(_run_git(root, "diff", "--unified=1", before_head, current_head, "--", *attributable))
+    patches.append(_run_git(root, "diff", "--unified=1", "--", *attributable))
+    tracked = set(_run_git(root, "ls-files").splitlines())
+    for relative in attributable:
+        path = Path(root) / relative
+        try:
+            if path.is_file() and relative not in tracked and path.stat().st_size <= 100_000:
+                patches.append("\n".join("+" + line for line in path.read_text(errors="ignore").splitlines()))
+        except OSError:
+            pass
+    patch = "\n".join(patches)[:80_000]
+    if not patch:
+        return []
+
+    removed = {}
+    added = {}
+    tests = []
+    symbols = []
+    routes = []
+    assignment = re.compile(r"^[+-]\s*[\"']?([A-Za-z][\w.-]*)[\"']?\s*[:=]\s*([^,}\n#]+)")
+    for line in patch.splitlines():
+        if not line.startswith(("+", "-")) or line.startswith(("+++", "---")):
+            continue
+        sign, body = line[0], line[1:].strip()
+        match = assignment.match(line)
+        if match:
+            target = added if sign == "+" else removed
+            target[match.group(1)] = match.group(2).strip().strip("\"'")[:60]
+        symbol = re.match(r"(?:async\s+)?def\s+([A-Za-z_]\w*)|class\s+([A-Za-z_]\w*)", body)
+        if sign == "+" and symbol:
+            name = symbol.group(1) or symbol.group(2)
+            human = _human_symbol(name)
+            if name.startswith("test_"):
+                tests.append(human)
+            elif not name.startswith("_"):
+                symbols.append(human)
+        route = re.search(r"(?:self\.path|route)\s*==\s*[\"']([^\"']+)", body)
+        if sign == "+" and route:
+            routes.append(route.group(1))
+
+    facts = []
+    for key in sorted(set(removed) & set(added)):
+        if removed[key] != added[key]:
+            facts.append(f"{_human_symbol(key)} changed from {removed[key]} to {added[key]}")
+    for route in routes[:2]:
+        facts.append(f"added the {route} endpoint")
+    for name in symbols[:2]:
+        facts.append(f"added {name} behavior")
+    for name in tests[:2]:
+        facts.append(f"added coverage for {name}")
+    return facts[:5]
+
+
 def git_change_summary(cwd: str | None, before: dict | None = None) -> dict:
     root = git_root(cwd)
     if not root:
@@ -230,6 +296,11 @@ def git_change_summary(cwd: str | None, before: dict | None = None) -> dict:
     )
     if branch_changed:
         summary = f"Switched from {old_branch} to {branch}. {summary}"
+    semantic = semantic_diff_facts(root, before, files, current_head)
+    if semantic and not oversized:
+        summary = semantic[0].rstrip(".") + "."
+        if len(semantic) > 1:
+            summary += " " + semantic[1].rstrip(".") + "."
     return {
         "count": len(files),
         "files": files,
@@ -239,6 +310,7 @@ def git_change_summary(cwd: str | None, before: dict | None = None) -> dict:
         "verified": True,
         "branch_changed": branch_changed,
         "oversized": oversized,
+        "semantic": semantic,
     }
 
 

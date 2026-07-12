@@ -1,4 +1,5 @@
 import json
+import subprocess
 import tempfile
 import unittest
 from datetime import datetime
@@ -119,6 +120,35 @@ class VoiceFeaturesTest(unittest.TestCase):
             result = vf.git_change_summary("/repo", before)
         self.assertTrue(result["branch_changed"])
         self.assertIn("switched from old to new", result["summary"].lower())
+
+    def test_semantic_diff_extracts_behavior_and_coverage(self):
+        patch = '\n'.join([
+            '--- a/config.py',
+            '+++ b/config.py',
+            '-"duck_target": 25,',
+            '+"duck_target": 15,',
+            '+def test_same_repo_parallel_turns():',
+        ])
+        before = {"head": "abc", "status": ""}
+        with mock.patch.object(vf, "_run_git", return_value=patch):
+            facts = vf.semantic_diff_facts("/repo", before, ["config.py"], "abc")
+        self.assertIn("duck target changed from 25 to 15", facts)
+        self.assertIn("added coverage for same repo parallel turns", facts)
+
+    def test_semantic_diff_from_real_git_turn(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.email", "test@example.com"], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.name", "Test"], check=True)
+            target = root / "settings.py"
+            target.write_text('"duck_target": 25,\n')
+            subprocess.run(["git", "-C", str(root), "add", "settings.py"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "baseline"], check=True)
+            before = vf.git_snapshot(str(root))
+            target.write_text('"duck_target": 15,\n')
+            result = vf.git_change_summary(str(root), before)
+        self.assertIn("duck target changed from 25 to 15", result["semantic"])
 
     def test_contract_rejects_meta_speech(self):
         spoken, meta = vf.enforce_spoken_contract(

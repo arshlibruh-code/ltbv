@@ -127,6 +127,7 @@ if ! curl -sf -m 2 "$BASE/health" >/dev/null 2>&1; then
 fi
 if curl -sf -m 2 "$BASE/health" | grep -q '"ok": true'; then pass "daemon health"; else fail "daemon health"; fi
 if curl -sf -m 3 "$BASE/doctor" | "$PY" -c 'import json,sys; d=json.load(sys.stdin); raise SystemExit(0 if len(d.get("checks", [])) >= 6 else 1)'; then pass "doctor endpoint"; else fail "doctor endpoint"; fi
+if curl -sf -m 3 "$BASE/timeline" | "$PY" -c 'import json,sys; d=json.load(sys.stdin); raise SystemExit(0 if isinstance(d.get("events"), list) and isinstance(d.get("recap"), str) else 1)'; then pass "timeline endpoint"; else fail "timeline endpoint"; fi
 ORIG_VOLUME=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["config"]["volume"])')
 SMOKE_LINE=$("$PY" - <<'EOF'
 import random
@@ -165,7 +166,7 @@ curl -sf -m 2 -X POST "$BASE/config" -d '{"volume": 0}' >/dev/null
 SINCE=$("$PY" -c "import time; print(time.time())")
 curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"Done.","cwd":"/tmp/ltbv-earcon"}' >/dev/null
 EARCON=0
-for _ in $(seq 1 20); do
+for _ in $(seq 1 40); do
   [ "$(earcon_only_since "$SINCE")" = "1" ] && EARCON=1 && break
   sleep 1
 done

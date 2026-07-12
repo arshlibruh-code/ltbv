@@ -13,6 +13,7 @@ class DaemonContractTest(unittest.TestCase):
         daemon.generations.clear()
         daemon.worker_running = False
         daemon.generation = 0
+        daemon.timeline_events.clear()
 
     def test_same_repo_parallel_turns_get_distinct_jobs(self):
         with mock.patch.object(daemon.threading, "Thread"):
@@ -59,6 +60,20 @@ class DaemonContractTest(unittest.TestCase):
         source = condense.call_args.args[0]
         self.assertIn("Request intent: fix + test", source)
         self.assertIn("Actual tool evidence: smoke passed", source)
+
+    def test_temporal_context_marks_resolved_failure(self):
+        daemon.timeline_events.append({"cwd": "/repo", "verification": "failed", "intent": "blocker"})
+        text = daemon.temporal_context("/repo", "passed", "success")
+        self.assertIn("resolves", text)
+
+    def test_recap_contains_only_structured_arc(self):
+        daemon.timeline_events.extend([
+            {"cwd": "/repo", "project": "repo", "verification": "failed", "intent": "blocker", "semantic": []},
+            {"cwd": "/repo", "project": "repo", "verification": "passed", "intent": "success", "semantic": ["queue now preserves parallel turns"]},
+        ])
+        recap = daemon.recap_text("/repo")
+        self.assertIn("earlier failure was resolved", recap.lower())
+        self.assertIn("queue now preserves parallel turns", recap.lower())
 
 
 if __name__ == "__main__":

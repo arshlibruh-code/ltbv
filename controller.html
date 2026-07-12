@@ -340,6 +340,7 @@
               <button class="btn" data-backchannel="faster">faster</button>
               <button class="btn" data-backchannel="brief">brief</button>
               <button class="btn" data-backchannel="normal">normal</button>
+              <button class="btn" data-backchannel="recap">recap</button>
               <span class="hint">backchannel the last spoken line</span>
             </div>
             <div class="quiet">
@@ -446,6 +447,14 @@
           </div>
         </section>
 
+        <section data-view="diagnostics">
+          <header><h2>Session Arc</h2><button class="btn" id="timeline-refresh">refresh</button></header>
+          <div class="body">
+            <div class="pane" id="timeline-recap">no recent work recorded</div>
+            <div class="check-list" id="timeline-events"></div>
+          </div>
+        </section>
+
         <section data-view="lab">
           <header><h2>Personality</h2><span class="saved" id="saved-prompt">saved</span></header>
           <div class="body">
@@ -501,7 +510,7 @@
       localStorage.setItem("ltbv-controller-view", activeView);
       if (activeView === "cockpit") setTimeout(drawHisto, 0);
       if (activeView === "history") setTimeout(renderLedger, 0);
-      if (activeView === "diagnostics") runDoctor();
+      if (activeView === "diagnostics") { runDoctor(); fetchTimeline(); }
     }
     for (const tab of document.querySelectorAll(".view-tab")) {
       tab.onclick = () => setView(tab.dataset.view);
@@ -1035,11 +1044,29 @@
       if (st.redacted) badges.push(`<span class="badge y">${st.redacted} redacted</span>`);
       if (st.pronunciations) badges.push(`<span class="badge b">${st.pronunciations} pronounced</span>`);
       if (st.build_signal) badges.push(`<span class="badge g">${st.build_signal.replaceAll("_", " ")}</span>`);
+      if ((st.semantic || []).length) badges.push('<span class="badge g">semantic diff</span>');
+      if (st.temporal) badges.push('<span class="badge b">session arc</span>');
       $("stage-badges").innerHTML = badges.join("");
     }
     async function fetchStages() {
       try { const t = await api("/log/tail?limit=1"); if (t.stages) renderInspector(t.stages); } catch {}
     }
+    async function fetchTimeline() {
+      try {
+        const data = await api("/timeline");
+        $("timeline-recap").textContent = data.recap || "no recent work recorded";
+        const list = $("timeline-events");
+        list.textContent = "";
+        for (const event of (data.events || []).slice(-8).reverse()) {
+          const row = document.createElement("div");
+          row.className = "check-row";
+          const fact = (event.semantic || [])[0] || `${event.diff_files || 0} changed`;
+          row.textContent = `${event.project || "project"} · ${event.verification || event.intent} · ${fact}`;
+          list.appendChild(row);
+        }
+      } catch { $("timeline-recap").textContent = "timeline unavailable"; }
+    }
+    $("timeline-refresh").onclick = fetchTimeline;
 
     // ---------- voice lab ----------
     let auditionPlaying = false;

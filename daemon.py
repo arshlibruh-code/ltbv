@@ -50,6 +50,7 @@ PREFIX_TEMPLATES = ("In {project}: ", "From {project}: ", "Update from {project}
 LOG_PATH = ROOT / ".voice.log"
 CONFIG_PATH = ROOT / "config.json"
 TURN_STATE_PATH = ROOT / ".turns.json"
+TIMELINE_PATH = ROOT / ".timeline.json"
 CONTROLLER_PATH = ROOT / "controller.html"
 RING_DIR = ROOT / ".clips"
 VOICES_DIR = ROOT / "voices"
@@ -57,7 +58,7 @@ KILL_PATH = ROOT / ".voice-disabled"
 AUDITION_TEXT = "This is {voice}, speaking for your coding agents."
 FFPLAY = shutil.which("ffplay")
 FFMPEG = shutil.which("ffmpeg")
-RING_SIZE = 5
+RING_SIZE = 8
 PEAK_TARGET = 160
 SAMPLE_RATE = 24000
 
@@ -482,6 +483,7 @@ sse_subscribers = []
 sse_lock = threading.Lock()
 recent_projects = {}
 turn_records = {}
+timeline_events = []
 prefix_counter = 0
 clip_ring = OrderedDict()
 
@@ -569,6 +571,79 @@ def take_turn(job: dict) -> dict:
                 turn_records.pop(record["key"], None)
         save_turn_records()
     return record or {}
+
+
+def load_timeline() -> None:
+    global timeline_events
+    try:
+        raw = json.loads(TIMELINE_PATH.read_text()) if TIMELINE_PATH.exists() else []
+        cutoff = time.time() - 7 * 86400
+        timeline_events = [event for event in raw if float(event.get("ts") or 0) >= cutoff][-200:]
+    except Exception:
+        timeline_events = []
+        append_log("timeline_error", action="load")
+
+
+def save_timeline() -> None:
+    try:
+        TIMELINE_PATH.write_text(json.dumps(timeline_events[-200:], indent=2) + "\n")
+    except Exception:
+        append_log("timeline_error", action="save")
+
+
+def temporal_context(cwd: str | None, verification: str, intent: str) -> str:
+    recent = [event for event in timeline_events if event.get("cwd") == cwd][-8:]
+    if not recent:
+        return ""
+    prior = recent[-1]
+    if prior.get("verification") == "failed" and verification == "passed":
+        return "Earlier verification failed; this turn resolves it with passing checks."
+    if prior.get("intent") == "blocker" and intent == "success":
+        return "The previous turn was blocked; this turn reports the resolution."
+    return ""
+
+
+def remember_timeline(cwd: str | None, meta: dict, intent: str, build_signal: str | None) -> None:
+    event = {
+        "ts": round(time.time(), 3),
+        "cwd": cwd,
+        "project": project_name(cwd),
+        "intent": intent,
+        "request_intent": meta.get("request_intent") or "",
+        "verification": meta.get("verification") or "unknown",
+        "tests": meta.get("verification_tests") or [],
+        "semantic": meta.get("semantic") or [],
+        "diff_files": int(meta.get("diff_files") or 0),
+        "build_signal": build_signal,
+    }
+    timeline_events.append(event)
+    del timeline_events[:-200]
+    save_timeline()
+
+
+def recap_text(cwd: str | None = None) -> str:
+    events = [event for event in timeline_events if not cwd or event.get("cwd") == cwd][-12:]
+    if not events:
+        return "No recent work is recorded."
+    projects = []
+    for event in events:
+        name = event.get("project") or "project"
+        if name not in projects:
+            projects.append(name)
+    latest = events[-1]
+    failures = [event for event in events if event.get("verification") == "failed" or event.get("intent") == "blocker"]
+    passed_after = failures and latest.get("verification") == "passed"
+    facts = [fact for event in events for fact in event.get("semantic") or []]
+    prefix = f"Recent work across {', '.join(projects[:3])}. " if len(projects) > 1 else f"In {projects[0]}. "
+    if passed_after:
+        prefix += "An earlier failure was resolved and the latest checks passed. "
+    elif failures:
+        prefix += "A blocker or failed check remains in the recent arc. "
+    elif latest.get("verification") == "passed":
+        prefix += "The latest checks passed. "
+    if facts:
+        prefix += facts[-1].rstrip(".") + "."
+    return trim_to_words(prefix, 38)
 
 config = {key: spec["default"] for key, spec in CONFIG_SPEC.items()}
 duck_state = {
@@ -902,6 +977,7 @@ def prepare_speech(
     kind: str = "reply",
     request_summary: str = "",
     verification: dict | None = None,
+    temporal: str = "",
 ) -> tuple[str, dict]:
     tableless, meta = strip_markdown_tables(raw or "")
     text = strip_markdown(tableless)
@@ -920,6 +996,8 @@ def prepare_speech(
     meta["request_intent"] = request_summary
     meta["verification"] = verification.get("verification", "unknown")
     meta["verification_tests"] = verification.get("tests", [])
+    meta["semantic"] = diff_info.get("semantic") or []
+    meta["temporal"] = temporal
     instruction = (
         f"Use at most {budget} words. Lead with the blocker or required action. "
         "Do not mention implementation chatter."
@@ -931,6 +1009,8 @@ def prepare_speech(
     if verification.get("verification") != "unknown":
         tests = ", ".join(verification.get("tests") or ["checks"])
         context.append(f"Actual tool evidence: {tests} {verification['verification']}.")
+    if temporal:
+        context.append(f"Session arc: {temporal}")
     if diff_summary:
         context.append(f"Verified Git evidence: {diff_summary}")
         instruction += " Treat the verified Git evidence as factual and mention its material change."
@@ -972,8 +1052,9 @@ def prepare_speech(
         return "", meta
     adaptive_overflow = config.get("adaptive_brevity_enabled") and len(text.split()) > budget
     diff_wants_summary = bool(diff_summary) and len(text.split()) > 6
-    if len(text) > config["max_direct_chars"] or adaptive_overflow or diff_wants_summary:
-        condensed = condense(source if diff_summary else text, instruction)
+    temporal_wants_summary = bool(temporal)
+    if len(text) > config["max_direct_chars"] or adaptive_overflow or diff_wants_summary or temporal_wants_summary:
+        condensed = condense(source if context else text, instruction)
         if condensed is None:
             meta["condense"] = "failed"
             meta["condense_source"] = "cleaned"
@@ -1417,6 +1498,10 @@ def backchannel(command: str) -> tuple[bool, str]:
     if command in {"normal", "full"}:
         applied, errors = apply_config({"adaptive_brevity_enabled": False})
         return (not errors), "full mode on"
+    if command == "recap":
+        text = recap_text()
+        enqueue_speak(text, None, kind="audition", prepared=True)
+        return True, text
     return False, "unknown command"
 
 
@@ -1642,6 +1727,7 @@ def process_job(job: dict) -> None:
                 float(turn.get("started_at") or 0),
                 job.get("turn_id") or turn.get("turn_id"),
             )
+            temporal = temporal_context(cwd, evidence.get("verification", "unknown"), intent)
             text, meta = prepare_speech(
                 raw,
                 intent,
@@ -1649,6 +1735,7 @@ def process_job(job: dict) -> None:
                 kind,
                 turn.get("request_intent", ""),
                 evidence,
+                temporal,
             )
         meta["redacted"] = redacted_count
         meta["build_signal"] = build_signal
@@ -1697,6 +1784,8 @@ def process_job(job: dict) -> None:
                     "request_intent": meta.get("request_intent"),
                     "verification": meta.get("verification"),
                     "verification_tests": meta.get("verification_tests") or [],
+                    "semantic": meta.get("semantic") or [],
+                    "temporal": meta.get("temporal") or "",
                 }
             )
     with state_lock:
@@ -1710,6 +1799,8 @@ def process_job(job: dict) -> None:
             current_generation=current_generation,
         )
         return
+    if kind == "reply" and not job.get("prepared"):
+        remember_timeline(cwd, meta, intent, build_signal)
     voice = voice_for_job(job)
     engine = engine_by_name(job.get("engine"))
     cue, cue_meta = earcon_pcm(
@@ -2092,6 +2183,9 @@ class Handler(BaseHTTPRequestHandler):
                     {"ok": True, "entries": log_tail(limit), "stages": last_stages},
                 )
                 return
+            if route == "/timeline":
+                json_response(self, 200, {"ok": True, "events": timeline_events[-50:], "recap": recap_text()})
+                return
             json_response(self, 404, {"error": "not_found"})
         except Exception:
             log_error("do_GET")
@@ -2278,6 +2372,7 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> int:
     load_config()
     load_turn_records()
+    load_timeline()
     try:
         server = ThreadingHTTPServer((HOST, PORT), Handler)
     except OSError:
