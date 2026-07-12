@@ -62,6 +62,26 @@ wait_for_event() { # wait_for_event <event> <since> <timeout-s>
   return 1
 }
 
+radio_bulletin_has_projects() { # radio_bulletin_has_projects <since-epoch> <project> <project>
+  "$PY" - "$1" "$2" "$3" <<'EOF'
+import json, sys
+since, first, second = float(sys.argv[1]), sys.argv[2], sys.argv[3]
+ok = False
+try:
+    for line in open(".voice.log"):
+        try:
+            d = json.loads(line)
+        except Exception:
+            continue
+        if d.get("event") == "radio_bulletin" and d.get("ts", 0) >= since:
+            projects = set(d.get("projects") or [])
+            ok = first in projects and second in projects
+except FileNotFoundError:
+    pass
+print("1" if ok else "0")
+EOF
+}
+
 # restore kill switch state on exit
 HAD_KILL=0
 [ -f "$KILL" ] && HAD_KILL=1 && mv "$KILL" "$KILL.smoke"
@@ -134,7 +154,9 @@ curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"smoke queue one","cwd":"/tmp/lt
 curl -sf -m 2 -X POST "$BASE/speak" -d '{"text":"smoke queue two","cwd":"/tmp/ltbv-beta"}' >/dev/null
 OK=0
 for _ in $(seq 1 90); do
-  [ "$(log_count speak "$SINCE")" -ge 2 ] && OK=1 && break
+  SPEAKS=$(log_count speak "$SINCE")
+  BULLETIN=$(radio_bulletin_has_projects "$SINCE" "ltbv-alpha" "ltbv-beta")
+  { [ "$SPEAKS" -ge 2 ] || [ "$BULLETIN" = "1" ]; } && OK=1 && break
   sleep 1
 done
 if [ "$OK" = 1 ]; then pass "multi-project queue"; else fail "multi-project queue"; fi
@@ -150,6 +172,9 @@ rm -f "$KILL"
 # 5b. replay: the first smoke clip must replay after internal checks
 restore_volume
 if [ -n "$FIRST_CLIP" ] && curl -sf -m 2 -X POST "$BASE/replay" -d "{\"clip\":\"$FIRST_CLIP\"}" | grep -q '"ok": true'; then pass "replay first clip"; else fail "replay first clip"; fi
+
+# 5d. backchannel: a control command must be accepted without speaking a new line
+if curl -sf -m 2 -X POST "$BASE/backchannel" -d '{"command":"brief"}' | grep -q '"ok": true'; then pass "backchannel control"; else fail "backchannel control"; fi
 
 # 5c. clone rejects a bad name without touching the system
 if curl -s -m 2 -X POST "$BASE/clone" -d '{"name":"BAD NAME","audio":""}' | grep -q '"ok": false'; then pass "clone guard"; else fail "clone guard"; fi

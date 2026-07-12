@@ -1,6 +1,6 @@
 #!/bin/bash
 # voice: poke the let-there-be-voice daemon from any terminal.
-# usage: voice status | chill | shutup | unshutup | say "text"
+# usage: voice status | chill | repeat | slower | faster | brief | normal | shutup | unshutup | say "text"
 set -u
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 PY="$ROOT/.venv/bin/python"
@@ -18,6 +18,11 @@ case "${1:-}" in
     ;;
   chill|stop)
     curl -sf -m 2 -X POST "$BASE/stop" -d '{}' >/dev/null && echo "chilled" || echo "daemon down, nothing to chill"
+    ;;
+  repeat|slower|faster|brief|normal)
+    curl -sf -m 2 -X POST "$BASE/backchannel" -d "{\"command\": \"$1\"}" \
+      | "$PY" -c 'import json,sys; d=json.load(sys.stdin); print(d.get("result", "backchannel failed"))' \
+      || echo "daemon down, backchannel unavailable"
     ;;
   shutup|mute)
     touch "$KILL" && echo "shut up on (.voice-disabled created)"
@@ -40,7 +45,7 @@ case "${1:-}" in
     echo "queued"
     ;;
   *)
-    echo "usage: voice status|chill|shutup|unshutup|say \"text\""
+    echo "usage: voice status|chill|repeat|slower|faster|brief|normal|shutup|unshutup|say \"text\""
     exit 1
     ;;
 esac

@@ -13,14 +13,14 @@ Repo-local notes for Claude and Codex.
 - `controller.html`: tuning frontend, served by the daemon at `http://127.0.0.1:7333/`.
 - `config.json`: runtime config, written by the controller, untracked. Delete it to reset to defaults.
 - `smoke.sh`: end-to-end confidence suite. Run before committing daemon or hook changes.
-- `voice`: CLI helper. `./voice status|chill|shutup|unshutup|say "text"`.
+- `voice`: CLI helper. `./voice status|chill|repeat|slower|faster|brief|normal|shutup|unshutup|say "text"`.
 - `install.sh`: relocatable macOS installer for the daemon and Claude/Codex hooks.
 - `bench_tts.py`: Pocket TTS bench script.
 - `build-packet.html`: implementation packet and source of truth.
 - `field-guide.html`: narrative guide for how the system behaves.
 
 ## Current behavior
-- Hooks in both CLIs: `Stop` speaks the final reply, `UserPromptSubmit` posts a cwd-scoped `/stop`, `Notification` speaks "<project> needs your input".
+- Hooks in both CLIs: `Stop` speaks the final reply, `UserPromptSubmit` snapshots the repo and stops stale speech, `Notification` speaks "<project> needs your input".
 - Replies over `max_direct_chars` (default 400) get condensed by the configured summarizer; on failure it speaks the first sentence with a short note.
 - Markdown-table replies send the raw full response to the summarizer first, so the voice gets a conversational table summary instead of row-by-row noise. If summarization fails, a mostly-table reply becomes a spoken invite to look.
 - Path, URL, and filename tokens are stripped from sentences; diff and traceback lines are dropped whole.
@@ -33,10 +33,12 @@ Repo-local notes for Claude and Codex.
 - Playback via `afplay` honoring `rate` and `volume` config. The daemon exits after `idle_exit_s` idle.
 - Optional ducking targets Spotify and Browser/YouTube independently. Browser/YouTube is controlled by the companion Chromium extension through `GET /browser/duck`.
 - Errors land in `.voice.log` as `event: "error"`. The log self-caps around 500 lines.
+- Repo earcons, intent cues, build-result sonification, adaptive brevity, pronunciation dictionaries, and privacy redaction are local defaults. A repo can override speech using `.ltbv/pronounce.json`.
+- When multiple projects finish together, the daemon can speak one radio bulletin naming each project. Backchannel commands are available through `/backchannel` and the CLI.
 
 ## Endpoints
 - `GET /` controller, `GET /health` (includes `git_rev`), `GET /config`, `GET /voices`, `GET /engines`, `GET /log/tail?limit=N`.
-- `POST /speak`, `POST /stop`, `POST /config`, `POST /engine {name}`, `POST /bench {text, voice?}`, `POST /audition {voice}`, `POST /recondense`.
+- `POST /speak`, `POST /stop`, `POST /turn/start`, `POST /backchannel {command}`, `POST /config`, `POST /engine {name}`, `POST /bench {text, voice?}`, `POST /audition {voice}`, `POST /recondense`.
 - Warm shootout on 2026-07-06, same sentence: Pocket RTF 0.160, TTFA 0.135s, synth 0.459s, duration 2.880s. Kokoro RTF 0.096, TTFA 0.420s, synth 0.420s, duration 4.375s.
 
 ## Shut Up vs Chill

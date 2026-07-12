@@ -25,6 +25,18 @@ from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from voice_features import (
+    adaptive_word_budget,
+    apply_pronunciations,
+    classify_intent,
+    detect_build_signal,
+    earcon_pcm,
+    git_change_summary,
+    git_snapshot,
+    redact_sensitive,
+    trim_to_words,
+)
+
 ROOT = Path(__file__).resolve().parent
 HOST = "127.0.0.1"
 PORT = 7333
@@ -296,6 +308,14 @@ CONFIG_SPEC = {
     "ducking_enabled": {"default": False, "kind": "bool"},
     "browser_youtube_ducking_enabled": {"default": False, "kind": "bool"},
     "browser_youtube_duck_target_volume": {"default": 15, "kind": "int", "min": 0, "max": 100},
+    "repo_earcons_enabled": {"default": True, "kind": "bool"},
+    "intent_earcons_enabled": {"default": True, "kind": "bool"},
+    "build_sonification_enabled": {"default": True, "kind": "bool"},
+    "adaptive_brevity_enabled": {"default": True, "kind": "bool"},
+    "diff_narration_enabled": {"default": True, "kind": "bool"},
+    "privacy_sentinel_enabled": {"default": True, "kind": "bool"},
+    "radio_bulletins_enabled": {"default": True, "kind": "bool"},
+    "radio_batch_window_ms": {"default": 450, "kind": "int", "min": 0, "max": 3000},
     "duck_target_volume": {"default": 25, "kind": "int", "min": 0, "max": 100},
     "duck_fade_ms": {"default": 400, "kind": "int", "min": 0, "max": 3000},
     "duck_restore_delay_ms": {"default": 150, "kind": "int", "min": 0, "max": 3000},
@@ -331,15 +351,20 @@ generation = 0
 generations = {}
 active_player = None
 active_cwd = None
+active_cwds = set()
 working_cwd = None
+working_cwds = set()
 last_activity = time.monotonic()
 started_at = time.monotonic()
 last_spoken_ts = None
+last_spoken_text = None
+last_spoken_clip = None
 last_stages = None
 now_speaking = None
 sse_subscribers = []
 sse_lock = threading.Lock()
 recent_projects = {}
+turn_snapshots = {}
 prefix_counter = 0
 clip_ring = OrderedDict()
 
@@ -621,8 +646,10 @@ def read_deepseek_env() -> dict:
     return data.get("env", {})
 
 
-def condense_via_ollama(text: str) -> str | None:
+def condense_via_ollama(text: str, instruction: str | None = None) -> str | None:
     system_prompt = config["condense_prompt"]
+    if instruction:
+        system_prompt = f"{system_prompt} {instruction}"
     body = {
         "model": config.get("condense_ollama_model") or "qwen3.5:4b",
         "stream": True,
@@ -663,12 +690,12 @@ def condense_via_ollama(text: str) -> str | None:
         return None
 
 
-def condense(text: str) -> str | None:
+def condense(text: str, instruction: str | None = None) -> str | None:
     provider = config.get("condense_provider", "deepseek")
     if provider == "none":
         return None
     if provider == "ollama":
-        return condense_via_ollama(text)
+        return condense_via_ollama(text, instruction)
     if provider != "deepseek":
         append_log("condense_error", provider=provider, detail="unsupported provider")
         return None
@@ -687,6 +714,8 @@ def condense(text: str) -> str | None:
         append_log("condense_error", provider=provider, detail="missing token")
         return None
     system_prompt = config["condense_prompt"]
+    if instruction:
+        system_prompt = f"{system_prompt} {instruction}"
     body = {
         "model": config.get("condense_model") or "deepseek-v4-flash",
         "max_tokens": 1000,
@@ -744,35 +773,65 @@ def condense(text: str) -> str | None:
     return None
 
 
-def prepare_speech(raw: str) -> tuple[str, dict]:
+def prepare_speech(
+    raw: str,
+    intent: str = "update",
+    diff_info: dict | None = None,
+    kind: str = "reply",
+) -> tuple[str, dict]:
     tableless, meta = strip_markdown_tables(raw or "")
     text = strip_markdown(tableless)
     meta["_cleaned"] = text
+    diff_info = diff_info or {}
+    diff_summary = str(diff_info.get("summary") or "")
+    budget = adaptive_word_budget(intent, kind, int(diff_info.get("count") or 0))
+    meta["intent"] = intent
+    meta["word_budget"] = budget
+    meta["diff_files"] = int(diff_info.get("count") or 0)
+    instruction = (
+        f"Use at most {budget} words. Lead with the blocker or required action. "
+        "Do not mention implementation chatter."
+    )
+    source = raw
+    if diff_summary:
+        source = f"Verified Git evidence: {diff_summary}\n\nAgent reply:\n{raw}"
+        instruction += " Treat the verified Git evidence as factual and mention its material change."
+
+    def concise_fallback(value: str) -> str:
+        generic = len(value.split()) <= 6 and re.search(
+            r"\b(done|fixed|finished|completed|implemented|ready)\b", value, re.I
+        )
+        if diff_summary and generic:
+            return trim_to_words(diff_summary, budget)
+        return trim_to_words(value, budget)
+
     if meta["table_skipped"]:
-        condensed = condense(raw)
+        condensed = condense(source, instruction)
         if condensed is not None:
             meta["condense"] = "ok"
             meta["condense_source"] = "raw_table"
-            return strip_markdown(condensed), meta
+            return trim_to_words(strip_markdown(condensed), budget), meta
         meta["condense"] = "failed"
         meta["condense_source"] = "raw_table"
         if text:
-            return f"Summary failed, first line: {first_sentence(text)}", meta
+            return concise_fallback(first_sentence(text)), meta
         meta["table_fallback"] = True
         return TABLE_FALLBACK_TEXT, meta
     if not text:
         return "", meta
-    if len(text) > config["max_direct_chars"]:
-        condensed = condense(text)
+    adaptive_overflow = config.get("adaptive_brevity_enabled") and len(text.split()) > budget
+    diff_wants_summary = bool(diff_summary) and len(text.split()) > 6
+    if len(text) > config["max_direct_chars"] or adaptive_overflow or diff_wants_summary:
+        condensed = condense(source if diff_summary else text, instruction)
         if condensed is None:
             meta["condense"] = "failed"
             meta["condense_source"] = "cleaned"
-            return f"Summary failed, first line: {first_sentence(text)}", meta
+            return concise_fallback(first_sentence(text)), meta
         meta["condense"] = "ok"
         meta["condense_source"] = "cleaned"
-        return strip_markdown(condensed), meta
+        return trim_to_words(strip_markdown(condensed), budget), meta
     meta["condense"] = "not_needed"
-    return text, meta
+    return concise_fallback(text), meta
 
 
 def transcript_last_assistant(path_str: str) -> str:
@@ -837,7 +896,7 @@ def voice_for_job(job: dict) -> str:
         voice = job["voice"]
         return voice if voice in voices_for_engine else voices_for_engine[0]
     voices = config["voices"]
-    if job["kind"] == "notification":
+    if job["kind"] in {"notification", "bulletin"}:
         voice = voices["notification"]
         return voice if voice in voices_for_engine else voices_for_engine[0]
     agent = job.get("agent") or "claude"
@@ -854,10 +913,11 @@ def is_stale(key, gen: int) -> bool:
 
 
 def take_active_player():
-    global active_player, active_cwd
+    global active_player, active_cwd, active_cwds
     player = active_player
     active_player = None
     active_cwd = None
+    active_cwds = set()
     return player
 
 
@@ -1067,16 +1127,22 @@ def speak(
     voice: str,
     kind: str,
     engine_name: str | None = None,
+    cue_pcm: bytes = b"",
+    source_cwds: list[str] | None = None,
 ) -> str | None:
     """Synthesize fully, then play the finished clip the moment it is ready.
     Ships a waveform + duration for the Stage and keeps the clip for replay.
     Returns a clip id, or None if the job went stale or synthesis failed."""
-    global active_player, active_cwd, last_spoken_ts, now_speaking
+    global active_player, active_cwd, active_cwds, last_spoken_ts, last_spoken_text, last_spoken_clip, now_speaking
     engine = engine_by_name(engine_name)
 
     pcm_frames = []
     peaks = []
     total_samples = 0
+    if cue_pcm:
+        pcm_frames.append(cue_pcm)
+        peaks.append(pcm_peak(cue_pcm))
+        total_samples += len(cue_pcm) // 2
     try:
         for chunk in engine.synth(text, voice):
             with state_lock:
@@ -1095,6 +1161,8 @@ def speak(
         RING_DIR.mkdir(exist_ok=True)
         write_wav(clip_path, pcm_frames, engine.sample_rate)
         ring_put(clip_id, clip_path)
+        last_spoken_clip = clip_id
+        last_spoken_text = text
     except Exception:
         log_error("ring_write")
 
@@ -1115,6 +1183,7 @@ def speak(
                 proc = player_proc(clip_path)
                 active_player = proc
                 active_cwd = cwd
+                active_cwds = set(source_cwds or ([cwd] if cwd else []))
                 last_spoken_ts = time.time()
                 now_speaking = {
                     "text": text[:240],
@@ -1145,7 +1214,7 @@ def speak(
 
 
 def _finish(proc) -> None:
-    global active_player, active_cwd, now_speaking
+    global active_player, active_cwd, active_cwds, now_speaking
     try:
         if proc and proc.stdin:
             try:
@@ -1160,6 +1229,7 @@ def _finish(proc) -> None:
             if active_player is proc:
                 active_player = None
                 active_cwd = None
+                active_cwds = set()
             now_speaking = None
         publish({"event": "now", "on": False})
 
@@ -1170,6 +1240,32 @@ def replay(clip_id: str) -> bool:
         return False
     player_proc(path)
     return True
+
+
+def backchannel(command: str) -> tuple[bool, str]:
+    command = str(command or "").strip().lower()
+    if command in {"chill", "stop", "shut up"}:
+        stop_speech()
+        return True, "chilled"
+    if command == "repeat":
+        if last_spoken_clip and replay(last_spoken_clip):
+            return True, "repeating"
+        return False, "nothing to repeat"
+    if command in {"slower", "faster"}:
+        delta = -0.15 if command == "slower" else 0.15
+        applied, errors = apply_config({"rate": float(config["rate"]) + delta})
+        if errors:
+            return False, "rate limit reached"
+        if last_spoken_clip:
+            replay(last_spoken_clip)
+        return True, f"rate {applied['rate']:.2f}x"
+    if command == "brief":
+        applied, errors = apply_config({"adaptive_brevity_enabled": True})
+        return (not errors), "brief mode on"
+    if command in {"normal", "full"}:
+        applied, errors = apply_config({"adaptive_brevity_enabled": False})
+        return (not errors), "full mode on"
+    return False, "unknown command"
 
 
 def clone_voice(name: str, audio_b64: str) -> tuple[bool, str]:
@@ -1242,8 +1338,103 @@ def pick_job_locked() -> dict:
     for key, job in pending.items():
         if job["kind"] == "notification":
             return pending.pop(key)
+    if config.get("radio_bulletins_enabled"):
+        reply_items = [
+            (key, job) for key, job in pending.items() if job["kind"] == "reply"
+        ]
+        projects = {job["cwd"] for _, job in reply_items if job.get("cwd")}
+        if len(projects) >= 2:
+            selected = reply_items[-4:]
+            for key, _ in selected:
+                pending.pop(key, None)
+            jobs = [job for _, job in selected]
+            gen = max(job["gen"] for job in jobs)
+            key = (None, "bulletin")
+            generations[key] = gen
+            return {
+                "gen": gen,
+                "raw": "",
+                "cwd": None,
+                "kind": "bulletin",
+                "agent": None,
+                "voice": None,
+                "engine": None,
+                "prepared": False,
+                "source_jobs": jobs,
+                "source_cwds": [job["cwd"] for job in jobs if job.get("cwd")],
+            }
     _, job = pending.popitem()
     return job
+
+
+def bulletin_content(job: dict) -> tuple[str, dict, str, str | None]:
+    sections = []
+    fallback_parts = []
+    intents = []
+    signals = []
+    redacted_count = 0
+    pronunciation_count = 0
+    projects = []
+    diff_files = 0
+    for source in job.get("source_jobs") or []:
+        cwd = source.get("cwd")
+        project = project_name(cwd) or "project"
+        projects.append(project)
+        raw = source.get("raw") or ""
+        if config.get("privacy_sentinel_enabled"):
+            raw, count = redact_sensitive(raw, cwd)
+            redacted_count += count
+        intent = classify_intent(raw, "reply")
+        signal = detect_build_signal(raw)
+        intents.append(intent)
+        if signal:
+            signals.append(signal)
+        with state_lock:
+            snapshot = turn_snapshots.pop(cwd, None) if cwd else None
+        diff_info = {}
+        if config.get("diff_narration_enabled") and snapshot:
+            diff_info = git_change_summary(cwd, snapshot)
+            diff_files += int(diff_info.get("count") or 0)
+        cleaned = strip_markdown(raw)
+        evidence = str(diff_info.get("summary") or "")
+        section = f"Project {project}."
+        if evidence:
+            section += f" Verified Git evidence: {evidence}"
+        section += f" Agent reply: {cleaned or raw}"
+        sections.append(section)
+        fallback = evidence or first_sentence(cleaned)
+        fallback, count = apply_pronunciations(trim_to_words(fallback, 10), cwd)
+        pronunciation_count += count
+        fallback_parts.append(f"{project}: {fallback}")
+
+    priority = ("blocker", "needs_input", "warning", "success", "update")
+    intent = next((candidate for candidate in priority if candidate in intents), "update")
+    signal_priority = ("tests_failed", "tests_passed", "deployed", "merged")
+    build_signal = next((candidate for candidate in signal_priority if candidate in signals), None)
+    budget = min(48, max(20, len(projects) * 12))
+    instruction = (
+        f"This is a radio bulletin for {len(projects)} coding projects. "
+        f"Use at most {budget} words total. Give one short clause per project, name every project, "
+        "and lead with any blocker or request for input."
+    )
+    condensed = condense("\n\n".join(sections), instruction)
+    text = trim_to_words(strip_markdown(condensed), budget) if condensed else "Bulletin. " + ". ".join(fallback_parts)
+    for source in job.get("source_jobs") or []:
+        text, count = apply_pronunciations(text, source.get("cwd"))
+        pronunciation_count += count
+    meta = {
+        "intent": intent,
+        "word_budget": budget,
+        "radio_projects": projects,
+        "radio_count": len(projects),
+        "redacted": redacted_count,
+        "pronunciations": pronunciation_count,
+        "diff_files": diff_files,
+        "build_signal": build_signal,
+        "condense": "ok" if condensed else "failed",
+        "condense_source": "radio_bulletin",
+    }
+    return text, meta, intent, build_signal
 
 
 def process_job(job: dict) -> None:
@@ -1253,11 +1444,27 @@ def process_job(job: dict) -> None:
     cwd = job["cwd"]
     kind = job["kind"]
     key = (cwd, kind)
-    if job.get("prepared"):
-        text, meta = raw, {}
+    if kind == "bulletin":
+        text, meta, intent, build_signal = bulletin_content(job)
+        cleaned = ""
     else:
-        text, meta = prepare_speech(raw)
-    cleaned = meta.pop("_cleaned", "")
+        redacted_count = 0
+        if config.get("privacy_sentinel_enabled"):
+            raw, redacted_count = redact_sensitive(raw, cwd)
+        intent = classify_intent(raw, kind)
+        build_signal = detect_build_signal(raw)
+        with state_lock:
+            snapshot = turn_snapshots.pop(cwd, None) if cwd else None
+        diff_info = {}
+        if kind == "reply" and config.get("diff_narration_enabled") and snapshot:
+            diff_info = git_change_summary(cwd, snapshot)
+        if job.get("prepared"):
+            text, meta = raw, {}
+        else:
+            text, meta = prepare_speech(raw, intent, diff_info, kind)
+        meta["redacted"] = redacted_count
+        meta["build_signal"] = build_signal
+        cleaned = meta.pop("_cleaned", "")
     if kind == "reply" and not job.get("prepared"):
         with state_lock:
             last_stages = {
@@ -1278,6 +1485,9 @@ def process_job(job: dict) -> None:
         prefix, prefixed = prefix_for_project(project_name(cwd))
         if prefixed:
             text = prefix + text
+    if kind != "bulletin":
+        text, pronunciation_count = apply_pronunciations(text, cwd)
+        meta["pronunciations"] = pronunciation_count
     with state_lock:
         stale = is_stale(key, gen)
         current_generation = generation_for(key)
@@ -1290,8 +1500,31 @@ def process_job(job: dict) -> None:
         )
         return
     voice = voice_for_job(job)
-    clip_id = speak(text, gen, key, cwd, voice, kind, job.get("engine"))
+    engine = engine_by_name(job.get("engine"))
+    cue, cue_meta = earcon_pcm(
+        project_name(cwd),
+        intent,
+        build_signal,
+        engine.sample_rate,
+        repo_enabled=bool(config.get("repo_earcons_enabled")),
+        intent_enabled=bool(config.get("intent_earcons_enabled")),
+        build_enabled=bool(config.get("build_sonification_enabled")),
+    )
+    meta.update(cue_meta)
+    clip_id = speak(
+        text,
+        gen,
+        key,
+        cwd,
+        voice,
+        kind,
+        job.get("engine"),
+        cue,
+        job.get("source_cwds"),
+    )
     if clip_id is not None:
+        if kind == "bulletin":
+            append_log("radio_bulletin", projects=meta.get("radio_projects", []))
         append_log(
             "speak",
             cwd=cwd,
@@ -1308,14 +1541,26 @@ def process_job(job: dict) -> None:
 
 
 def worker() -> None:
-    global worker_running, working_cwd
+    global worker_running, working_cwd, working_cwds
     while True:
+        with state_lock:
+            if not pending:
+                worker_running = False
+                return
+            should_batch_wait = (
+                config.get("radio_bulletins_enabled")
+                and not any(job["kind"] == "notification" for job in pending.values())
+                and any(job["kind"] == "reply" for job in pending.values())
+            )
+        if should_batch_wait:
+            time.sleep(int(config.get("radio_batch_window_ms", 450)) / 1000)
         with state_lock:
             if not pending:
                 worker_running = False
                 return
             job = pick_job_locked()
             working_cwd = job["cwd"]
+            working_cwds = set(job.get("source_cwds") or ([job["cwd"]] if job["cwd"] else []))
         try:
             process_job(job)
         except Exception:
@@ -1324,6 +1569,7 @@ def worker() -> None:
             with state_lock:
                 if working_cwd == job["cwd"]:
                     working_cwd = None
+                    working_cwds = set()
 
 
 def enqueue_speak(
@@ -1358,12 +1604,17 @@ def enqueue_speak(
 
 
 def stop_speech(cwd: str | None = None) -> int:
-    global generation, working_cwd
+    global generation, working_cwd, working_cwds
     with state_lock:
         pending_cwds = sorted({key[0] or "" for key in pending})
         matches_pending = any(key[0] == cwd for key in pending)
         should_stop = (
-            cwd is None or matches_pending or working_cwd == cwd or active_cwd == cwd
+            cwd is None
+            or matches_pending
+            or working_cwd == cwd
+            or cwd in working_cwds
+            or active_cwd == cwd
+            or cwd in active_cwds
         )
         if not should_stop:
             append_log(
@@ -1385,9 +1636,17 @@ def stop_speech(cwd: str | None = None) -> int:
                 pending.pop(key)
             for key in [key for key in generations if key[0] == cwd]:
                 generations[key] = gen
-        if cwd is None or working_cwd == cwd:
+        was_working_source = cwd is not None and cwd in working_cwds
+        if cwd is None or working_cwd == cwd or was_working_source:
             working_cwd = None
-        player = take_active_player() if cwd is None or active_cwd == cwd else None
+            working_cwds = set()
+        if was_working_source:
+            generations[(None, "bulletin")] = gen
+        player = (
+            take_active_player()
+            if cwd is None or active_cwd == cwd or cwd in active_cwds
+            else None
+        )
         append_log("stop", cwd=cwd, generation=gen)
     if player and player.poll() is None:
         try:
@@ -1520,6 +1779,7 @@ class Handler(BaseHTTPRequestHandler):
                         "model_loaded": active_engine().loaded(),
                         "uptime_s": round(now() - started_at, 1),
                         "last_spoken_ts": last_spoken_ts,
+                        "last_spoken_clip": last_spoken_clip,
                         "now_speaking": now_speaking,
                         "git_rev": GIT_REV,
                         "muted": muted(),
@@ -1615,6 +1875,25 @@ class Handler(BaseHTTPRequestHandler):
                 data = read_json(self)
                 gen = stop_speech(data.get("cwd"))
                 json_response(self, 202, {"ok": True, "generation": gen})
+                return
+            if self.path == "/backchannel":
+                data = read_json(self)
+                ok, result = backchannel(data.get("command", ""))
+                json_response(self, 200 if ok else 400, {"ok": ok, "result": result})
+                return
+            if self.path == "/turn/start":
+                data = read_json(self)
+                cwd = data.get("cwd")
+                gen = stop_speech(cwd)
+                snapshot = git_snapshot(cwd)
+                if cwd and snapshot:
+                    with state_lock:
+                        turn_snapshots[cwd] = snapshot
+                json_response(
+                    self,
+                    202,
+                    {"ok": True, "generation": gen, "git": bool(snapshot)},
+                )
                 return
             if self.path == "/restart":
                 json_response(self, 200, {"ok": True, "restarting": True})

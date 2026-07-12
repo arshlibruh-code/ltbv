@@ -301,6 +301,13 @@
               <button class="btn toggle" id="browser-duck-toggle">browser / youtube duck off</button>
               <span class="hint">fade media during speech, restore after</span>
             </div>
+            <div class="row-actions">
+              <button class="btn" data-backchannel="repeat">repeat</button>
+              <button class="btn" data-backchannel="slower">slower</button>
+              <button class="btn" data-backchannel="faster">faster</button>
+              <button class="btn" data-backchannel="brief">brief</button>
+              <span class="hint">backchannel the last spoken line</span>
+            </div>
             <div class="quiet">
               <div class="cap">
                 <span class="lbl">quiet hours · drag across the day</span>
@@ -1082,6 +1089,13 @@
       renderDucking();
       pushConfig({ browser_youtube_ducking_enabled: cfg.browser_youtube_ducking_enabled }, "saved-desk", "err-desk");
     };
+    for (const button of document.querySelectorAll("[data-backchannel]")) {
+      button.onclick = async () => {
+        button.disabled = true;
+        try { await api("/backchannel", { command: button.dataset.backchannel }); }
+        finally { button.disabled = false; }
+      };
+    }
     $("recondense").onclick = async () => {
       $("recondense").disabled = true;
       const out = await api("/recondense", {});
