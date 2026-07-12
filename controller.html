@@ -87,8 +87,22 @@
 
     /* ---------- layout ---------- */
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+    .grid2.single { grid-template-columns: 1fr; }
     .col { display: grid; gap: 10px; min-width: 0; }
     @media (max-width: 1140px) { .grid2 { grid-template-columns: 1fr; } }
+
+    .view-tabs {
+      display: flex; gap: 0; margin-bottom: 10px; border: 1px solid var(--line);
+      background: var(--panel); overflow-x: auto;
+    }
+    .view-tab {
+      flex: 1; min-width: 110px; padding: 7px 12px; border: 0; border-right: 1px solid var(--line);
+      background: transparent; color: var(--faint); cursor: pointer; font-family: var(--mono);
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+    }
+    .view-tab:last-child { border-right: 0; }
+    .view-tab.active { color: var(--text); background: var(--panel-2); box-shadow: inset 0 -2px var(--blue); }
+    [hidden] { display: none !important; }
 
     section { border: 1px solid var(--line); background: var(--panel); min-width: 0; }
     section > header {
@@ -250,6 +264,17 @@
     td strong { color: var(--text); font-weight: 400; }
     .blind { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
     #cleanup { margin-top: 8px; display: none; }
+    .doctor-summary { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+    .doctor-summary b { font-family: var(--mono); font-size: 16px; font-weight: 400; }
+    .doctor-summary span { color: var(--muted); }
+    .check-list { display: grid; border: 1px solid var(--line-soft); }
+    .check-row { display: grid; grid-template-columns: 10px 140px 1fr; gap: 8px; align-items: center; padding: 7px 9px; border-bottom: 1px solid var(--line-soft); }
+    .check-row:last-child { border-bottom: 0; }
+    .check-row i { width: 7px; height: 7px; background: var(--red); }
+    .check-row.ok i { background: var(--green); }
+    .check-row.optional i { background: var(--yellow); }
+    .check-row b { font-family: var(--mono); font-size: 10px; font-weight: 400; }
+    .check-row span { color: var(--muted); font-size: 10px; }
   </style>
 </head>
 <body>
@@ -257,10 +282,11 @@
     <div class="topbar">
       <h1>let-there-be-voice</h1>
       <div class="pills">
-        <span class="pill"><i class="dot" id="dot"></i><span id="h-engine">…</span></span>
-        <span class="pill">model <span id="h-model">…</span></span>
+        <span class="pill"><i class="dot" id="dot"></i><span id="h-status">checking</span></span>
+        <span class="pill">engine <span id="h-engine">…</span></span>
+        <span class="pill">branch <span id="h-branch">…</span></span>
+        <span class="pill">condense <span id="h-provider">…</span></span>
         <span class="pill">up <span id="h-uptime">…</span></span>
-        <span class="pill">rev <span id="h-rev">…</span></span>
         <span class="pill">spoke <span id="h-spoke">never</span></span>
       </div>
       <div class="top-actions">
@@ -278,10 +304,17 @@
       <button class="btn danger" id="now-stop">chill</button>
     </div>
 
+    <nav class="view-tabs" aria-label="Controller mode">
+      <button class="view-tab active" data-view="cockpit">Cockpit</button>
+      <button class="view-tab" data-view="lab">Lab</button>
+      <button class="view-tab" data-view="history">History</button>
+      <button class="view-tab" data-view="diagnostics">Diagnostics</button>
+    </nav>
+
     <div class="grid2">
       <div class="col">
 
-        <section>
+        <section data-view="cockpit">
           <header><h2>Mixing Desk</h2><span class="saved" id="saved-desk">saved</span></header>
           <div class="body">
             <div class="histo-wrap">
@@ -306,6 +339,7 @@
               <button class="btn" data-backchannel="slower">slower</button>
               <button class="btn" data-backchannel="faster">faster</button>
               <button class="btn" data-backchannel="brief">brief</button>
+              <button class="btn" data-backchannel="normal">normal</button>
               <span class="hint">backchannel the last spoken line</span>
             </div>
             <div class="quiet">
@@ -324,7 +358,7 @@
           </div>
         </section>
 
-        <section>
+        <section data-view="lab">
           <header><h2>Voice Lab</h2><span>generated live from one reference sample each</span></header>
           <div class="body">
             <div class="assigns">
@@ -350,7 +384,7 @@
           </div>
         </section>
 
-        <section>
+        <section data-view="history">
           <header><h2>Ledger</h2><span>last 12 hours</span></header>
           <div class="body">
             <div class="tiles">
@@ -373,7 +407,7 @@
       </div>
       <div class="col">
 
-        <section>
+        <section data-view="lab">
           <header><h2>TTS Shootout</h2><span id="bench-state">Pocket stays default</span></header>
           <div class="body">
             <div class="engine-grid" id="engine-grid"></div>
@@ -390,7 +424,7 @@
           </div>
         </section>
 
-        <section>
+        <section data-view="diagnostics">
           <header><h2>Strip Inspector</h2><span>last reply through the pipeline</span></header>
           <div class="body">
             <div class="stages">
@@ -398,13 +432,21 @@
               <div><div class="pane-title"><span>cleaned</span><span id="clean-count"></span></div><div class="pane" id="clean-pane">…</div></div>
             </div>
             <div class="spoken-row">
-              <div class="pane-title"><span>spoken</span><span class="badges" id="stage-badges"></span></div>
+              <div class="pane-title"><span>final audio text</span><span class="badges" id="stage-badges"></span></div>
               <div class="pane" id="spoken-pane">…</div>
             </div>
           </div>
         </section>
 
-        <section>
+        <section data-view="diagnostics">
+          <header><h2>System Diagnostics</h2><button class="btn" id="doctor-refresh">refresh</button></header>
+          <div class="body">
+            <div class="doctor-summary"><b id="doctor-state">checking</b><span id="doctor-meta"></span></div>
+            <div class="check-list" id="doctor-list"></div>
+          </div>
+        </section>
+
+        <section data-view="lab">
           <header><h2>Personality</h2><span class="saved" id="saved-prompt">saved</span></header>
           <div class="body">
             <textarea id="prompt" spellcheck="false"></textarea>
@@ -438,6 +480,32 @@
     let benchResults = [];
     let blindOrder = [];
     let isMuted = false;
+    let activeView = "cockpit";
+
+    function setView(view) {
+      const valid = new Set(["cockpit", "lab", "history", "diagnostics"]);
+      activeView = valid.has(view) ? view : "cockpit";
+      for (const section of document.querySelectorAll("section[data-view]")) {
+        section.hidden = section.dataset.view !== activeView;
+      }
+      let visibleCols = 0;
+      for (const col of document.querySelectorAll(".grid2 > .col")) {
+        const visible = !!col.querySelector(`section[data-view="${activeView}"]`);
+        col.hidden = !visible;
+        if (visible) visibleCols++;
+      }
+      document.querySelector(".grid2").classList.toggle("single", visibleCols === 1);
+      for (const tab of document.querySelectorAll(".view-tab")) {
+        tab.classList.toggle("active", tab.dataset.view === activeView);
+      }
+      localStorage.setItem("ltbv-controller-view", activeView);
+      if (activeView === "cockpit") setTimeout(drawHisto, 0);
+      if (activeView === "history") setTimeout(renderLedger, 0);
+      if (activeView === "diagnostics") runDoctor();
+    }
+    for (const tab of document.querySelectorAll(".view-tab")) {
+      tab.onclick = () => setView(tab.dataset.view);
+    }
 
     // ---------- config save with inline armor errors ----------
     let saveTimer = null;
@@ -462,17 +530,26 @@
 
     // ---------- health ----------
     const fmtDur = (s) => s >= 5940 ? (s/3600).toFixed(1) + "h" : s >= 120 ? Math.round(s/60) + "m" : Math.round(s) + "s";
+    const fmtAgo = (ts) => {
+      if (!ts) return "never";
+      const seconds = Math.max(0, Date.now() / 1000 - ts);
+      return seconds < 5 ? "now" : fmtDur(seconds) + " ago";
+    };
     async function pollHealth() {
       try {
         const h = await api("/health");
         $("dot").classList.add("on");
-        $("h-engine").textContent = h.engine;
-        $("h-model").textContent = h.model_loaded ? "loaded" : "cold";
+        $("h-status").textContent = h.muted ? "muted" : h.now_speaking ? "speaking" : "ready";
+        $("h-engine").textContent = h.engine + " · " + (h.model_loaded ? "loaded" : "cold");
+        $("h-branch").textContent = (h.git_branch || "?") + (h.git_dirty ? " · dirty" : "");
+        $("h-provider").textContent = (h.condense_provider || "none") + " · " + (h.condense_locality || "local");
         $("h-uptime").textContent = fmtDur(h.uptime_s);
-        $("h-rev").textContent = h.git_rev || "?";
-        $("h-spoke").textContent = h.last_spoken_ts ? new Date(h.last_spoken_ts * 1000).toLocaleTimeString() : "never";
+        $("h-spoke").textContent = fmtAgo(h.last_spoken_ts);
         setMuteState(!!h.muted);
-      } catch { $("dot").classList.remove("on"); }
+      } catch {
+        $("dot").classList.remove("on");
+        $("h-status").textContent = "offline";
+      }
     }
 
     function setMuteState(muted) {
@@ -480,7 +557,33 @@
       $("mute").classList.toggle("on", muted);
       $("mute").innerHTML = muted ? 'shut up on <kbd>space</kbd>' : 'shut up <kbd>space</kbd>';
       $("dot").classList.toggle("on", !muted);
+      if (muted) $("h-status").textContent = "muted";
     }
+
+    // ---------- diagnostics ----------
+    async function runDoctor() {
+      const state = $("doctor-state"), list = $("doctor-list");
+      state.textContent = "checking";
+      list.innerHTML = "";
+      try {
+        const out = await api("/doctor");
+        state.textContent = out.ok ? "ready" : "attention needed";
+        state.style.color = out.ok ? "var(--green)" : "var(--red)";
+        $("doctor-meta").textContent = `${out.git.branch}${out.git.dirty ? " · dirty" : ""} · ${out.provider} ${out.locality}`;
+        for (const check of out.checks || []) {
+          const row = document.createElement("div");
+          row.className = "check-row " + (check.ok ? "ok" : check.required ? "" : "optional");
+          const dot = document.createElement("i");
+          const name = document.createElement("b"); name.textContent = check.name;
+          const detail = document.createElement("span"); detail.textContent = check.detail;
+          row.append(dot, name, detail); list.appendChild(row);
+        }
+      } catch {
+        state.textContent = "daemon unreachable";
+        state.style.color = "var(--red)";
+      }
+    }
+    $("doctor-refresh").onclick = runDoctor;
 
     // ---------- TTS shootout ----------
     async function initEngines() {
@@ -522,13 +625,12 @@
     // ---------- condense provider ----------
     const CONDENSE_PROVIDERS = [
       { name: "ollama", detail: () => cfg.condense_ollama_model || "qwen3.5:4b" },
-      { name: "deepseek", detail: () => cfg.condense_model || "deepseek-v4-flash" },
       { name: "none", detail: () => "skip condensing" },
     ];
     function renderCondense() {
       const grid = $("condense-grid");
       grid.innerHTML = "";
-      const active = cfg.condense_provider || "deepseek";
+      const active = cfg.condense_provider || "ollama";
       for (const p of CONDENSE_PROVIDERS) {
         const card = document.createElement("div");
         card.className = "engine-card" + (p.name === active ? " active" : "");
@@ -920,6 +1022,19 @@
       if (st.condense === "failed") badges.push('<span class="badge r">condense failed</span>');
       if (st.condense === "not_needed") badges.push('<span class="badge b">spoken raw</span>');
       if (st.table_skipped) badges.push('<span class="badge y">table skipped</span>');
+      if (st.intent) badges.push(`<span class="badge b">${st.intent}</span>`);
+      if (st.request_intent) badges.push(`<span class="badge b">asked: ${st.request_intent}</span>`);
+      if (st.verification === "passed") badges.push(`<span class="badge g">verified: ${(st.verification_tests || []).join(", ") || "passed"}</span>`);
+      if (st.verification === "failed") badges.push(`<span class="badge r">failed: ${(st.verification_tests || []).join(", ") || "checks"}</span>`);
+      if (st.contract === "fallback") badges.push('<span class="badge r">contract fallback</span>');
+      if (st.contract === "earcon_only") badges.push('<span class="badge g">earcon only</span>');
+      if (st.diff_files) badges.push(`<span class="badge g">${st.diff_files} changed</span>`);
+      if (st.git_verified === false) badges.push(`<span class="badge y">git evidence unavailable</span>`);
+      if (st.git_branch_changed) badges.push('<span class="badge y">branch changed</span>');
+      if (st.git_oversized) badges.push('<span class="badge y">large change</span>');
+      if (st.redacted) badges.push(`<span class="badge y">${st.redacted} redacted</span>`);
+      if (st.pronunciations) badges.push(`<span class="badge b">${st.pronunciations} pronounced</span>`);
+      if (st.build_signal) badges.push(`<span class="badge g">${st.build_signal.replaceAll("_", " ")}</span>`);
       $("stage-badges").innerHTML = badges.join("");
     }
     async function fetchStages() {
@@ -1183,6 +1298,7 @@
 
     // ---------- boot ----------
     (async () => {
+      setView(localStorage.getItem("ltbv-controller-view") || "cockpit");
       const c = await api("/config");
       cfg = c.config;
       buildScrubs(); renderScrubs(); renderQuiet(); renderCondense();

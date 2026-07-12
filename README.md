@@ -25,6 +25,8 @@ For a health check:
 ~/.local/bin/ltbv doctor
 ```
 
+Everything stays local. Ollama condenses long replies; `none` keeps the deterministic fallback. Prompt text is redacted and ephemeral, while only compact intent and turn evidence survive daemon restarts.
+
 ### Pronunciation
 
 Create `.ltbv/pronounce.json` in a repo when names need help:
@@ -53,7 +55,9 @@ The daemon serves the controller automatically at `http://127.0.0.1:7333/`.
 
 | Command | Action |
 |---|---|
+| `./voice wake` | Start the daemon quietly |
 | `./voice status` | Check daemon status |
+| `./voice doctor` | Check the complete local loop |
 | `./voice say "hello"` | Speak a line |
 | `./voice chill` | Stop the current line |
 | `./voice repeat` | Repeat the last line |

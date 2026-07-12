@@ -553,7 +553,7 @@
         </div>
         <div class="grid cols-3">
           <div class="card pad metric"><b>Short replies</b><span>These can be spoken almost directly, so the answer stays crisp and human.</span></div>
-          <div class="card pad metric"><b>Long replies</b><span>These get condensed into a short spoken summary, so the speaker does not ramble through dense prose. A local model can handle this entirely on your machine, or a network model can, your call.</span></div>
+          <div class="card pad metric"><b>Long replies</b><span>These get condensed into a short spoken summary by local Ollama, so the speaker does not ramble through dense prose. Set the provider to <code>none</code> for the deterministic fallback.</span></div>
           <div class="card pad metric"><b>Tables</b><span>A reply with a table is never read row by row. The full reply goes to the condenser first, and the voice speaks the short table summary. If that fails, it simply tells you to look.</span></div>
         </div>
       </section>
