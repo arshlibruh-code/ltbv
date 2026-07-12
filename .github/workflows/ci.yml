@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Check scripts
+        run: bash -n install.sh test_install.sh smoke.sh voice
+      - name: Run contract tests
+        run: python3 -m unittest -q test_voice_features.py test_daemon_contract.py
+      - name: Test installer lifecycle
+        run: ./test_install.sh
+      - name: Check documentation links
+        run: |
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+
+          files = [Path("install.html"), Path("field-guide.html"), Path("build-packet.html"), Path("index.html")]
+          errors = []
+
+          class Document(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.refs = []
+                  self.ids = set()
+
+              def handle_starttag(self, tag, attrs):
+                  attrs = dict(attrs)
+                  if attrs.get("id"):
+                      self.ids.add(attrs["id"])
+                  for key in ("href", "src"):
+                      if attrs.get(key):
+                          self.refs.append(attrs[key])
+
+          for path in files:
+              page = Document()
+              page.feed(path.read_text())
+              for ref in page.refs:
+                  if ref.startswith(("http://", "https://", "data:", "mailto:")):
+                      continue
+                  target, _, fragment = ref.partition("#")
+                  target_path = path.parent / target if target else path
+                  if not target_path.exists():
+                      errors.append(f"{path}: missing {ref}")
+                  elif fragment and target_path.suffix == ".html":
+                      linked = Document()
+                      linked.feed(target_path.read_text())
+                      if fragment not in linked.ids:
+                          errors.append(f"{path}: missing fragment {ref}")
+
+          if errors:
+              raise SystemExit("\n".join(errors))
+          print("LINKS PASS")
+          PY
