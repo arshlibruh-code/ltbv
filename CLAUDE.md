@@ -23,6 +23,7 @@ Repo-local notes for Claude and Codex.
 - Hooks in both CLIs: `Stop` speaks the final reply, `UserPromptSubmit` stops stale speech and starts an asynchronous Git snapshot, `Notification` speaks "<project> needs your input".
 - Prompt text is redacted and held in memory only. Restart recovery persists compact request intent, turn identity, transcript location, and the Git baseline in `.turns.json`.
 - Spoken claims are checked against actual local test commands and outcomes found in Claude/Codex transcripts. Diagnostics shows intent and verification metadata, never prompt or transcript bodies.
+- Attributable Git diffs are translated into behavioral facts. `.timeline.json` keeps only compact outcomes for session-arc narration and `./voice recap`; it stores no prompt, reply, or source text.
 - Condensing is local-only through Ollama, with `none` as the deterministic fallback.
 - Replies over `max_direct_chars` (default 400) get condensed by the configured summarizer; on failure it speaks the first sentence with a short note.
 - Markdown-table replies send the raw full response to the summarizer first, so the voice gets a conversational table summary instead of row-by-row noise. If summarization fails, a mostly-table reply becomes a spoken invite to look.
