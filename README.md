@@ -1,32 +1,12 @@
-<p align="center">
-  <img src="assets/ltbv-banner.png" alt="ltbv seven segment technical banner" width="980">
-</p>
+![ltbv banner](assets/ltbv-banner.png)
 
-<div align="center">
-  <h1>ltbv</h1>
-  <p><em>let there be voice</em></p>
-  <p><strong>A local voice layer for coding agents.</strong></p>
-  <p>
-    <a href="https://arshlibruh-code.github.io/ltbv/field-guide.html"><kbd>FIELD GUIDE</kbd></a>
-    <a href="https://arshlibruh-code.github.io/ltbv/build-packet.html"><kbd>BUILD PACKET</kbd></a>
-    <a href="#install"><kbd>INSTALL</kbd></a>
-    <a href="#controls"><kbd>CONTROLS</kbd></a>
-  </p>
-</div>
+# ltbv
 
-<p align="center">
-  <kbd>STOP HOOK</kbd>
-  <code>-></code>
-  <kbd>QUEUE BY CWD</kbd>
-  <code>-></code>
-  <kbd>LOCAL TTS</kbd>
-  <code>-></code>
-  <kbd>CHILL / SHUT UP</kbd>
-</p>
+*let there be voice*
 
-<p align="center">
-  Agent turns become project-aware speech.
-</p>
+A local voice layer for coding agents.
+
+[📖 Field Guide](https://arshlibruh-code.github.io/ltbv/field-guide.html) · [📦 Build Packet](https://arshlibruh-code.github.io/ltbv/build-packet.html)
 
 ## Install
 
@@ -34,36 +14,34 @@
 git clone https://github.com/arshlibruh-code/ltbv.git
 cd ltbv
 uv sync
-./voice status
 ```
 
-Wire Claude Code or Codex to:
+Point the Claude Code or Codex hook at:
 
 ```bash
 $REPO/.venv/bin/python $REPO/hook.py
 ```
 
-Open the controller after the daemon starts:
+The hook starts the daemon when needed.
+
+## Controller
+
+Wake the daemon and open the controller:
 
 ```bash
+./voice say "Let there be voice is live. I can talk back now."
 open http://127.0.0.1:7333/
 ```
 
-## Controls
+The daemon serves the controller automatically at `http://127.0.0.1:7333/`.
 
-| Control | Meaning |
+## CLI
+
+| Command | Action |
 |---|---|
-| `CHILL` | Stop the current speech |
-| `SHUT UP` | Disable future speech with `.voice-disabled` |
-| `Space` | Toggle SHUT UP |
-| `./voice say "text"` | Speak a manual line |
-
-## Notes
-
-TTS runs locally. Long and table-heavy replies can use the configured summarizer. Spotify ducking is opt-in. Browser ducking is future extension work.
-
-Run the gate before changing behavior:
-
-```bash
-./smoke.sh
-```
+| `./voice status` | Check daemon status |
+| `./voice say "hello"` | Speak a line |
+| `./voice chill` | Stop the current line |
+| `./voice shutup` | Block future speech |
+| `./voice unshutup` | Re-enable speech |
+| `./smoke.sh` | Run full end-to-end verification |

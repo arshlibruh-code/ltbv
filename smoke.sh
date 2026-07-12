@@ -91,7 +91,7 @@ import random
 lines = [
     "Can you hear me? I'm wired into the voice layer now.",
     "I'm on the wire. You should be able to hear me now.",
-    "Voice link is live. I can talk back now.",
+    "Let there be voice is live. I can talk back now.",
     "Hook path is live. If you can hear this, the loop works.",
     "Can you hear me? If yes, the hook path works.",
     "Voice channel is armed. Let there be voice.",
