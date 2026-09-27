@@ -70,6 +70,7 @@ META_SPEECH_PATTERNS = (
     r"\bthis (?:summary|response|reply)\b",
     r"\bi (?:summarized|condensed)\b",
     r"\bas an ai\b",
+    r"\bi am (?:a|an) (?:coding )?(?:agent|assistant|ai)\b",
     r"\blet me know what you think\b",
 )
 
