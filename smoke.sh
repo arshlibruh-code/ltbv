@@ -236,11 +236,11 @@ if [ "$ERRS" = "1" ] && curl -sf -m 2 "$BASE/health" >/dev/null; then pass "conf
 
 # 8. condense provider validates as a closed config set
 PROVIDER=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["config"]["condense_provider"])')
-curl -sf -m 2 -X POST "$BASE/config" -d '{"condense_provider": "ollama"}' >/dev/null
+curl -sf -m 2 -X POST "$BASE/config" -d '{"condense_provider": "fm"}' >/dev/null
 GOT=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["config"]["condense_provider"])')
 curl -sf -m 2 -X POST "$BASE/config" -d "{\"condense_provider\": \"$PROVIDER\"}" >/dev/null
 BAD=$(curl -sf -m 2 -X POST "$BASE/config" -d '{"condense_provider": "ramble"}' | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin)["errors"]))')
-if [ "$GOT" = "ollama" ] && [ "$BAD" = "1" ]; then pass "condense provider config"; else fail "condense provider config"; fi
+if [ "$GOT" = "fm" ] && [ "$BAD" = "1" ]; then pass "condense provider config"; else fail "condense provider config"; fi
 
 BROWSER_DUCK=$(curl -sf -m 2 "$BASE/config" | "$PY" -c 'import json,sys; print(str(json.load(sys.stdin)["config"]["browser_youtube_ducking_enabled"]).lower())')
 curl -sf -m 2 -X POST "$BASE/config" -d '{"browser_youtube_ducking_enabled": true}' >/dev/null

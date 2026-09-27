@@ -118,7 +118,7 @@ ltbv open</code><button class="copy" type="button">copy</button></div>
     <section class="section">
       <div class="section-head"><h2>Optional</h2></div>
       <div class="rows">
-        <div class="row"><b>Ollama</b><span>Condenses long replies locally. Without it, ltbv uses deterministic fallback speech.</span></div>
+        <div class="row"><b>Apple <code>fm</code></b><span>Condenses long replies on-device (macOS 27, Apple Intelligence on, <code>sudo fm license</code> once). Without it, ltbv uses deterministic fallback speech.</span></div>
         <div class="row"><b>Browser audio</b><span>Load <code>~/.local/share/ltbv/browser-extension</code> as an unpacked Arc or Chrome extension for YouTube ducking.</span></div>
       </div>
     </section>
@@ -138,7 +138,7 @@ ltbv uninstall</code><button class="copy" type="button">copy</button></div>
       <div class="rows">
         <div class="row"><b>command not found</b><span>Open a new terminal. The installer adds <code>~/.local/bin</code> to <code>~/.zprofile</code>.</span></div>
         <div class="row"><b>silent</b><span>Run <code>ltbv doctor</code>, then check SHUT UP and quiet hours in the controller.</span></div>
-        <div class="row"><b>Ollama unavailable</b><span>Install and start Ollama, or choose <code>none</code> as the condense provider.</span></div>
+        <div class="row"><b><code>fm</code> unavailable</b><span>Run <code>fm available</code>. If it says <code>modelNotReady</code>, the model is still downloading; otherwise choose <code>none</code> as the condense provider.</span></div>
         <div class="row"><b>update refused</b><span>The installed checkout has local changes. Commit or remove them before running <code>ltbv update</code>.</span></div>
       </div>
       <p class="note">The installer is safe to rerun. Existing Claude and Codex settings are backed up before hook changes.</p>

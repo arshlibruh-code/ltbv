@@ -65,11 +65,11 @@ PEAK_TARGET = 160
 SAMPLE_RATE = 24000
 
 DEFAULT_CONDENSE_PROMPT = (
-    "You are speaking for a coding agent after it has finished a turn. "
-    "The user hears this out loud, so speak the smallest truthful thing that lets them continue without looking. "
-    "Lead with the result, blocker, or exact decision required. Mention evidence and uncertainty when they matter. "
-    "Never discuss summarizing, prompts, the assistant, or the user. "
-    "If the reply contains a table, summarize the table's meaning conversationally. "
+    "You are speaking for a coding agent after it finished a turn. The user hears this out loud. "
+    "Say it in one or two short sentences, like a calm coding partner. "
+    "Keep the concrete result: numbers and names. "
+    "Mention a decision or question only if the reply actually asks one, and never answer it yourself. "
+    "No filler, no praise, no talk about summarizing. If there is a table, say what it means."
 )
 
 CATALOG_VOICES = (
@@ -304,8 +304,7 @@ CONFIG_SPEC = {
     "max_direct_chars": {"default": 400, "kind": "int", "min": 50, "max": 5000},
     "idle_exit_s": {"default": 600, "kind": "int", "min": 60, "max": 86400},
     "project_window_s": {"default": 600, "kind": "int", "min": 30, "max": 7200},
-    "condense_provider": {"default": "ollama", "kind": "condense_provider"},
-    "condense_ollama_model": {"default": "qwen3.5:4b", "kind": "str"},
+    "condense_provider": {"default": "fm", "kind": "condense_provider"},
     "condense_timeout_s": {"default": 30, "kind": "int", "min": 2, "max": 60},
     "rate": {"default": 1.0, "kind": "float", "min": 0.5, "max": 3.0},
     "volume": {"default": 1.0, "kind": "float", "min": 0.0, "max": 1.0},
@@ -393,10 +392,10 @@ def hook_install_status() -> dict:
     return status
 
 
-def ollama_reachable() -> bool:
+def fm_available() -> bool:
     try:
-        urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=0.5).read(1)
-        return True
+        p = subprocess.run(["fm", "available"], capture_output=True, text=True, timeout=5)
+        return p.returncode == 0 and "unavailable" not in p.stdout
     except Exception:
         return False
 
@@ -404,11 +403,11 @@ def ollama_reachable() -> bool:
 def doctor_snapshot() -> dict:
     hooks = hook_install_status()
     provider = config.get("condense_provider", "none")
-    ollama = ollama_reachable()
-    condense_ok = provider == "none" or (provider == "ollama" and ollama)
+    fm = provider == "fm" and fm_available()
+    condense_ok = provider == "none" or fm
     condense_detail = {
         "none": "disabled · local",
-        "ollama": f"ollama · local · {'reachable' if ollama else 'not running'}",
+        "fm": f"apple fm · on-device · {'available' if fm else 'unavailable'}",
     }.get(provider, provider)
     checks = [
         {"name": "daemon", "ok": True, "detail": f"127.0.0.1:{PORT}", "required": True},
@@ -853,7 +852,7 @@ def validate_field(key: str, value):
         return value
     if kind == "condense_provider":
         value = str(value).strip().lower()
-        if value not in {"ollama", "none"}:
+        if value not in {"fm", "none"}:
             raise ValueError(key)
         return value
     raise ValueError(key)
@@ -998,44 +997,28 @@ def first_sentence(text: str) -> str:
     return text[: config["max_direct_chars"]].strip()
 
 
-def condense_via_ollama(text: str, instruction: str | None = None) -> str | None:
+def condense_via_fm(text: str, instruction: str | None = None) -> str | None:
+    # Apple's on-device model (macOS 27 `fm`). Text goes in on stdin so a reply
+    # starting with "-" can't be read as a flag. The model has an 8k-token window.
     system_prompt = config["condense_prompt"]
     if instruction:
         system_prompt = f"{system_prompt} {instruction}"
-    body = {
-        "model": config.get("condense_ollama_model") or "qwen3.5:4b",
-        "stream": True,
-        "think": False,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": text},
-        ],
-    }
-    payload = json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(
-        "http://127.0.0.1:11434/api/chat",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
     try:
-        chunks = []
-        with urllib.request.urlopen(
-            req, timeout=config["condense_timeout_s"]
-        ) as resp:
-            for line in resp:
-                line = line.strip()
-                if not line:
-                    continue
-                data = json.loads(line)
-                chunks.append((data.get("message") or {}).get("content", ""))
-                if data.get("done"):
-                    break
-        return strip_markdown("".join(chunks)) or None
+        p = subprocess.run(
+            ["fm", "respond", "--no-stream", "-i", system_prompt],
+            input=text[:12000],
+            capture_output=True,
+            text=True,
+            timeout=config["condense_timeout_s"],
+        )
+        out = re.sub(r"\x1b\[[0-9;]*m", "", p.stdout).strip()
+        if p.returncode != 0 or not out:
+            raise RuntimeError((p.stderr or p.stdout or "empty reply").strip())
+        return strip_markdown(out) or None
     except Exception as exc:
         append_log(
             "condense_error",
-            provider="ollama",
+            provider="fm",
             detail=str(exc)[:300],
             error=type(exc).__name__,
         )
@@ -1043,11 +1026,11 @@ def condense_via_ollama(text: str, instruction: str | None = None) -> str | None
 
 
 def condense(text: str, instruction: str | None = None) -> str | None:
-    provider = config.get("condense_provider", "ollama")
+    provider = config.get("condense_provider", "fm")
     if provider == "none":
         return None
-    if provider == "ollama":
-        return condense_via_ollama(text, instruction)
+    if provider == "fm":
+        return condense_via_fm(text, instruction)
     append_log("condense_error", provider=provider, detail="unsupported provider")
     return None
 

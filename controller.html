@@ -639,13 +639,13 @@
 
     // ---------- condense provider ----------
     const CONDENSE_PROVIDERS = [
-      { name: "ollama", detail: () => cfg.condense_ollama_model || "qwen3.5:4b" },
+      { name: "fm", detail: () => "apple on-device" },
       { name: "none", detail: () => "skip condensing" },
     ];
     function renderCondense() {
       const grid = $("condense-grid");
       grid.innerHTML = "";
-      const active = cfg.condense_provider || "ollama";
+      const active = cfg.condense_provider || "fm";
       for (const p of CONDENSE_PROVIDERS) {
         const card = document.createElement("div");
         card.className = "engine-card" + (p.name === active ? " active" : "");
