@@ -27,7 +27,7 @@ Repo-local notes for Claude and Codex.
 - Spoken claims are checked against actual local test commands and outcomes found in Claude/Codex transcripts. Diagnostics shows intent and verification metadata, never prompt or transcript bodies.
 - Attributable Git diffs are translated into behavioral facts. `.timeline.json` keeps only compact outcomes for session-arc narration and `./voice recap`; it stores no prompt, reply, or source text.
 - Optional Voice Inbox mode persists prepared replies in `.voice-inbox.json` without speaking them. `I'm back` drains them into one local return briefing.
-- Condensing is local-only through Ollama, with `none` as the deterministic fallback.
+- Condensing is local-only through Apple's on-device `fm` (macOS 27), with `none` as the deterministic fallback.
 - Replies over `max_direct_chars` (default 400) get condensed by the configured summarizer; on failure it speaks the first sentence with a short note.
 - Markdown-table replies send the raw full response to the summarizer first, so the voice gets a conversational table summary instead of row-by-row noise. If summarization fails, a mostly-table reply becomes a spoken invite to look.
 - Path, URL, and filename tokens are stripped from sentences; diff and traceback lines are dropped whole.

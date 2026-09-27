@@ -65,11 +65,11 @@ PEAK_TARGET = 160
 SAMPLE_RATE = 24000
 
 DEFAULT_CONDENSE_PROMPT = (
-    "You are speaking for a coding agent after it has finished a turn. "
-    "The user hears this out loud, so speak the smallest truthful thing that lets them continue without looking. "
-    "Lead with the result, blocker, or exact decision required. Mention evidence and uncertainty when they matter. "
-    "Never discuss summarizing, prompts, the assistant, or the user. "
-    "If the reply contains a table, summarize the table's meaning conversationally. "
+    "Rewrite this message from a coding agent as one or two short spoken sentences for the user, like a calm coding partner. "
+    "Use at most 25 words. Keep the concrete result: numbers and names. "
+    "Mention a decision or question only if the message actually asks one, and never answer it yourself. "
+    "Plain sentences only: no lists, no symbols, no filler, no praise. Never talk about yourself or about summarizing. "
+    "If there is a table, say what it means."
 )
 
 CATALOG_VOICES = (
@@ -304,8 +304,7 @@ CONFIG_SPEC = {
     "max_direct_chars": {"default": 400, "kind": "int", "min": 50, "max": 5000},
     "idle_exit_s": {"default": 600, "kind": "int", "min": 60, "max": 86400},
     "project_window_s": {"default": 600, "kind": "int", "min": 30, "max": 7200},
-    "condense_provider": {"default": "ollama", "kind": "condense_provider"},
-    "condense_ollama_model": {"default": "qwen3.5:4b", "kind": "str"},
+    "condense_provider": {"default": "fm", "kind": "condense_provider"},
     "condense_timeout_s": {"default": 30, "kind": "int", "min": 2, "max": 60},
     "rate": {"default": 1.0, "kind": "float", "min": 0.5, "max": 3.0},
     "volume": {"default": 1.0, "kind": "float", "min": 0.0, "max": 1.0},
@@ -393,10 +392,10 @@ def hook_install_status() -> dict:
     return status
 
 
-def ollama_reachable() -> bool:
+def fm_available() -> bool:
     try:
-        urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=0.5).read(1)
-        return True
+        p = subprocess.run(["fm", "available"], capture_output=True, text=True, timeout=5)
+        return p.returncode == 0 and "unavailable" not in p.stdout
     except Exception:
         return False
 
@@ -404,11 +403,11 @@ def ollama_reachable() -> bool:
 def doctor_snapshot() -> dict:
     hooks = hook_install_status()
     provider = config.get("condense_provider", "none")
-    ollama = ollama_reachable()
-    condense_ok = provider == "none" or (provider == "ollama" and ollama)
+    fm = provider == "fm" and fm_available()
+    condense_ok = provider == "none" or fm
     condense_detail = {
         "none": "disabled · local",
-        "ollama": f"ollama · local · {'reachable' if ollama else 'not running'}",
+        "fm": f"apple fm · on-device · {'available' if fm else 'unavailable'}",
     }.get(provider, provider)
     checks = [
         {"name": "daemon", "ok": True, "detail": f"127.0.0.1:{PORT}", "required": True},
@@ -853,7 +852,7 @@ def validate_field(key: str, value):
         return value
     if kind == "condense_provider":
         value = str(value).strip().lower()
-        if value not in {"ollama", "none"}:
+        if value not in {"fm", "none"}:
             raise ValueError(key)
         return value
     raise ValueError(key)
@@ -979,6 +978,7 @@ def strip_markdown(text: str) -> str:
             " ",
             s,
         )
+        s = re.sub(r"^[-•]\s+", "", s)
         s = re.sub(r"\s+", " ", s).strip()
         if not s:
             continue
@@ -987,6 +987,7 @@ def strip_markdown(text: str) -> str:
     text = re.sub(r"`([^`]+)`", r"\1", text)
     text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
     text = re.sub(r"[*_#>\[\]()]", " ", text)
+    text = re.sub(r"\s[-•]\s", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
@@ -998,44 +999,28 @@ def first_sentence(text: str) -> str:
     return text[: config["max_direct_chars"]].strip()
 
 
-def condense_via_ollama(text: str, instruction: str | None = None) -> str | None:
+def condense_via_fm(text: str, instruction: str | None = None) -> str | None:
+    # Apple's on-device model (macOS 27 `fm`). Text goes in on stdin so a reply
+    # starting with "-" can't be read as a flag. The model has an 8k-token window.
     system_prompt = config["condense_prompt"]
     if instruction:
         system_prompt = f"{system_prompt} {instruction}"
-    body = {
-        "model": config.get("condense_ollama_model") or "qwen3.5:4b",
-        "stream": True,
-        "think": False,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": text},
-        ],
-    }
-    payload = json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(
-        "http://127.0.0.1:11434/api/chat",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
     try:
-        chunks = []
-        with urllib.request.urlopen(
-            req, timeout=config["condense_timeout_s"]
-        ) as resp:
-            for line in resp:
-                line = line.strip()
-                if not line:
-                    continue
-                data = json.loads(line)
-                chunks.append((data.get("message") or {}).get("content", ""))
-                if data.get("done"):
-                    break
-        return strip_markdown("".join(chunks)) or None
+        p = subprocess.run(
+            ["fm", "respond", "--no-stream", "-i", system_prompt],
+            input=text[:12000],
+            capture_output=True,
+            text=True,
+            timeout=config["condense_timeout_s"],
+        )
+        out = re.sub(r"\x1b\[[0-9;]*m", "", p.stdout).strip()
+        if p.returncode != 0 or not out:
+            raise RuntimeError((p.stderr or p.stdout or "empty reply").strip())
+        return strip_markdown(out) or None
     except Exception as exc:
         append_log(
             "condense_error",
-            provider="ollama",
+            provider="fm",
             detail=str(exc)[:300],
             error=type(exc).__name__,
         )
@@ -1043,11 +1028,11 @@ def condense_via_ollama(text: str, instruction: str | None = None) -> str | None
 
 
 def condense(text: str, instruction: str | None = None) -> str | None:
-    provider = config.get("condense_provider", "ollama")
+    provider = config.get("condense_provider", "fm")
     if provider == "none":
         return None
-    if provider == "ollama":
-        return condense_via_ollama(text, instruction)
+    if provider == "fm":
+        return condense_via_fm(text, instruction)
     append_log("condense_error", provider=provider, detail="unsupported provider")
     return None
 
@@ -1061,91 +1046,60 @@ def prepare_speech(
     verification: dict | None = None,
     temporal: str = "",
 ) -> tuple[str, dict]:
+    # Short replies are spoken as-is (minus markdown). Everything longer goes raw
+    # to the condenser, which reads tables, code and paths better than regex does.
+    # The spoken contract still guards trivial success, meta speech and false passes.
     tableless, meta = strip_markdown_tables(raw or "")
     text = strip_markdown(tableless)
     meta["_cleaned"] = text
     diff_info = diff_info or {}
+    verification = verification or {}
     diff_summary = str(diff_info.get("summary") or "")
     budget = adaptive_word_budget(intent, kind, int(diff_info.get("count") or 0))
-    meta["intent"] = intent
-    meta["word_budget"] = budget
-    meta["diff_files"] = int(diff_info.get("count") or 0)
-    meta["git_verified"] = diff_info.get("verified")
-    meta["git_reason"] = diff_info.get("reason")
-    meta["git_branch_changed"] = bool(diff_info.get("branch_changed"))
-    meta["git_oversized"] = bool(diff_info.get("oversized"))
-    verification = verification or {}
-    meta["request_intent"] = request_summary
-    meta["verification"] = verification.get("verification", "unknown")
-    meta["verification_tests"] = verification.get("tests", [])
-    meta["semantic"] = diff_info.get("semantic") or []
-    meta["temporal"] = temporal
-    instruction = (
-        f"Use at most {budget} words. Lead with the blocker or required action. "
-        "Do not mention implementation chatter."
-    )
-    source = raw
+    meta.update({
+        "intent": intent,
+        "word_budget": budget,
+        "diff_files": int(diff_info.get("count") or 0),
+        "git_verified": diff_info.get("verified"),
+        "git_reason": diff_info.get("reason"),
+        "git_branch_changed": bool(diff_info.get("branch_changed")),
+        "git_oversized": bool(diff_info.get("oversized")),
+        "request_intent": request_summary,
+        "verification": verification.get("verification", "unknown"),
+        "verification_tests": verification.get("tests", []),
+        "semantic": diff_info.get("semantic") or [],
+        "temporal": temporal,
+    })
     context = []
     if request_summary:
         context.append(f"Request intent: {request_summary}.")
-    if verification.get("verification") != "unknown":
+    if verification.get("verification", "unknown") != "unknown":
         tests = ", ".join(verification.get("tests") or ["checks"])
         context.append(f"Actual tool evidence: {tests} {verification['verification']}.")
     if temporal:
         context.append(f"Session arc: {temporal}")
     if diff_summary:
         context.append(f"Verified Git evidence: {diff_summary}")
-        instruction += " Treat the verified Git evidence as factual and mention its material change."
-    if context:
-        source = "\n".join(context) + f"\n\nAgent reply:\n{raw}"
-
-    def concise_fallback(value: str) -> str:
-        generic = len(value.split()) <= 6 and re.search(
-            r"\b(done|fixed|finished|completed|implemented|ready)\b", value, re.I
-        )
-        if diff_summary and generic:
-            return trim_to_words(diff_summary, budget)
-        return trim_to_words(value, budget)
+    source = "\n".join(context) + f"\n\nAgent reply:\n{raw}" if context else (raw or "")
 
     def finish(value: str) -> tuple[str, dict]:
-        spoken, contract_meta = enforce_spoken_contract(
-            value,
-            source,
-            intent,
-            budget,
-            diff_summary,
-        )
+        spoken, contract_meta = enforce_spoken_contract(value, source, intent, budget, diff_summary)
         meta.update(contract_meta)
         return spoken, meta
 
-    if meta["table_skipped"]:
-        condensed = condense(source, instruction)
-        if condensed is not None:
-            meta["condense"] = "ok"
-            meta["condense_source"] = "raw_table"
-            return finish(strip_markdown(condensed))
-        meta["condense"] = "failed"
-        meta["condense_source"] = "raw_table"
-        if text:
-            return finish(concise_fallback(first_sentence(text)))
-        meta["table_fallback"] = True
-        return finish(TABLE_FALLBACK_TEXT)
-    if not text:
+    if not text and not meta["table_skipped"]:
         return "", meta
-    adaptive_overflow = config.get("adaptive_brevity_enabled") and len(text.split()) > budget
-    diff_wants_summary = bool(diff_summary) and len(text.split()) > 6
-    temporal_wants_summary = bool(temporal)
-    if len(text) > config["max_direct_chars"] or adaptive_overflow or diff_wants_summary or temporal_wants_summary:
-        condensed = condense(source if context else text, instruction)
-        if condensed is None:
-            meta["condense"] = "failed"
-            meta["condense_source"] = "cleaned"
-            return finish(concise_fallback(first_sentence(text)))
-        meta["condense"] = "ok"
-        meta["condense_source"] = "cleaned"
-        return finish(strip_markdown(condensed))
-    meta["condense"] = "not_needed"
-    return finish(concise_fallback(text))
+    if not meta["table_skipped"] and not context and len(text) <= config["max_direct_chars"]:
+        meta["condense"] = "not_needed"
+        return finish(text)
+    condensed = condense(source)
+    meta["condense_source"] = "raw"
+    if condensed is None:
+        meta["condense"] = "failed"
+        return finish(first_sentence(text) if text else TABLE_FALLBACK_TEXT)
+    meta["condense"] = "ok"
+    return finish(strip_markdown(condensed))
+
 
 
 def transcript_last_assistant(path_str: str) -> str:
